@@ -55,9 +55,8 @@ def now_str(fmt="%d.%m.%Y %H:%M") -> str:
 
 def pil_to_base64_png(img: Image.Image) -> str:
     from PIL import ImageOps
-    img = img.convert("L")               # In Graustufen konvertieren
-    img = ImageOps.invert(img)           # Farben invertieren (Schwarz <-> Weiß)
-    img = img.convert("1")               # In 1-Bit Bitmap (mit Dithering) konvertieren
+    img = img.convert("L")              # Graustufen
+    img = img.convert("1")              # BITMAP 1-Bit mit Dithering
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
     return base64.b64encode(buf.getvalue()).decode("ascii")
