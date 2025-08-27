@@ -1,38 +1,30 @@
 import os
+import io
+import random
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
-
 from pydantic import BaseModel
 
 from logic import (
-    log,
-    now_str,
-    pil_to_base64_png,
-    mqtt_publish_image_base64,
-    render_receipt,
-    render_image_with_headers,
-    ReceiptCfg,
-    check_api_key,
-    require_ui_auth,
-    issue_cookie,
-    ui_auth_state,
-    _get_bom_data,
-    cfg_get,
-    SETTINGS,
-    SET_KEYS,
-    _save_settings,
-    GUESTS,
-    _guest_consume_or_error,
+    log, now_str, pil_to_base64_png, mqtt_publish_image_base64,
+    render_receipt, render_image_with_headers, ReceiptCfg,
+    check_api_key, require_ui_auth, issue_cookie, ui_auth_state,
+    cfg_get, SETTINGS, SET_KEYS, _save_settings, GUESTS, _guest_consume_or_error
 )
 from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
+
+# Importiere den BOM-Router
+from api_bom import router as bom_router
 
 app = FastAPI(title="Printer API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-PRINT_WIDTH_PX = cfg_get("PRINT_WIDTH_PX", 576)
+app.include_router(bom_router)  # Bindet BOM-Endpunkte ein
 
-# Schemas
+PRINT_WIDTH_PX = int(cfg_get("PRINT_WIDTH_PX", 576))
+
+# Datenklassen
 class PrintPayload(BaseModel):
     title: str = "TASKS"
     lines: list[str] = []
@@ -92,7 +84,13 @@ async def api_print_image(
 ):
     check_api_key(request)
     content = await file.read()
-    src = render_image_with_headers(Image.open(io.BytesIO(content)), PRINT_WIDTH_PX, ReceiptCfg(), title=img_title, subtitle=img_subtitle)
+    src = render_image_with_headers(
+        Image.open(io.BytesIO(content)),
+        PRINT_WIDTH_PX,
+        ReceiptCfg(),
+        title=img_title,
+        subtitle=img_subtitle
+    )
     b64 = pil_to_base64_png(src)
     mqtt_publish_image_base64(b64, cut_paper=1)
     return {"ok": True}
@@ -304,34 +302,3 @@ def ui_settings_test(request: Request):
     b64 = pil_to_base64_png(img)
     mqtt_publish_image_base64(b64, cut_paper=1)
     return html_page("Einstellungen", "<div class='card'>Testdruck gesendet.</div>")
-
-# Book of Mormon random verse printing
-@app.post("/api/print/bom/random")
-async def api_print_bom_random(request: Request):
-    check_api_key(request)
-    try:
-        data = _get_bom_data()
-    except Exception as e:
-        log("Fehler beim Laden des BoM JSON:", repr(e))
-        data = []
-
-    if not isinstance(data, list) or not data:
-        ref = "Book of Mormon"
-        text = "Konnte keinen Vers laden (Quelle nicht erreichbar)."
-    else:
-        try:
-            v = random.choice(data)
-            ref = v.get("reference") or f"{v.get('book')} {v.get('chapter')}:{v.get('verse')}"
-            text = (v.get("text") or "").strip()
-            if not text:
-                text = "Vers ohne Text (Daten unvollständig)."
-        except Exception as e:
-            log("Fehler beim Zufallsauswahl:", repr(e))
-            ref, text = "Book of Mormon", "Fehler bei der Auswahl eines Verses."
-
-    cfg = ReceiptCfg()
-    img = render_receipt(ref, [text], add_time=True, width_px=PRINT_WIDTH_PX, cfg=cfg)
-    b64 = pil_to_base64_png(img)
-    mqtt_publish_image_base64(b64, cut_paper=1)
-
-    return {"ok": True, "reference": ref, "text": text}
