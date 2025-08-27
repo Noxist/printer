@@ -92,6 +92,7 @@ HTML_UI = r"""
   <div class="tab" role="tab" id="tab-img" aria-controls="pane_img" aria-selected="false" tabindex="-1">Bild</div>
 </div>
 
+<!-- VORLAGE -->
 <section id="pane_tpl" class="card" role="tabpanel" aria-labelledby="tab-tpl">
   <form method="post" action="/ui/print/template">
     <div class="grid">
@@ -105,11 +106,11 @@ HTML_UI = r"""
       </div>
     </div>
     <div class="row" style="margin-top:12px">
-      <label><input type="checkbox" name="add_dt" checked> Datum/Zeit automatisch anhängen</label>
+      <label><input type="checkbox" name="add_dt" checked> Datum/Zeit automatisch anhaengen</label>
       <div class="grow"></div>
       <div id="auth-wrap" class="row" style="gap:10px">
         <label for="pass">UI-Passwort</label>
-        <input id="pass" type="password" name="pass" placeholder="nur falls nötig" style="max-width:220px">
+        <input id="pass" type="password" name="pass" placeholder="nur falls noetig" style="max-width:220px">
         <label id="remember-wrap"><input type="checkbox" name="remember"> Angemeldet bleiben</label>
       </div>
     </div>
@@ -118,7 +119,57 @@ HTML_UI = r"""
     </div>
   </form>
 </section>
-<!-- weitere Sections raw und img analog wie im Original -->
+
+<!-- RAW -->
+<section id="pane_raw" class="card" role="tabpanel" aria-labelledby="tab-raw" hidden>
+  <form method="post" action="/ui/print/raw">
+    <div>
+      <label for="rawtext">Rohtext</label>
+      <textarea id="rawtext" name="text" placeholder="Direkttext hier eingeben"></textarea>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label><input type="checkbox" name="add_dt"> Datum/Zeit automatisch anhaengen</label>
+      <div class="grow"></div>
+      <div id="auth-wrap2" class="row" style="gap:10px">
+        <label for="pass2">UI-Passwort</label>
+        <input id="pass2" type="password" name="pass" placeholder="nur falls noetig" style="max-width:220px">
+        <label id="remember-wrap2"><input type="checkbox" name="remember"> Angemeldet bleiben</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px; gap:12px">
+      <button type="submit">Drucken</button>
+    </div>
+  </form>
+</section>
+
+<!-- BILD -->
+<section id="pane_img" class="card" role="tabpanel" aria-labelledby="tab-img" hidden>
+  <form method="post" action="/ui/print/image" enctype="multipart/form-data">
+    <div class="grid">
+      <div>
+        <label for="imgfile">Bilddatei</label>
+        <input id="imgfile" type="file" name="file" accept="image/*" required>
+      </div>
+      <div>
+        <label for="img_title">Titel (optional)</label>
+        <input id="img_title" type="text" name="img_title" placeholder="Titel">
+        <label for="img_subtitle" style="margin-top:8px">Untertitel (optional)</label>
+        <input id="img_subtitle" type="text" name="img_subtitle" placeholder="Untertitel">
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div class="grow"></div>
+      <div id="auth-wrap3" class="row" style="gap:10px">
+        <label for="pass3">UI-Passwort</label>
+        <input id="pass3" type="password" name="pass" placeholder="nur falls noetig" style="max-width:220px">
+        <label id="remember-wrap3"><input type="checkbox" name="remember"> Angemeldet bleiben</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px; gap:12px">
+      <button type="submit">Drucken</button>
+    </div>
+  </form>
+</section>
 
 <script>
 const tabs=[{id:"tpl",btn:"tab-tpl",pane:"pane_tpl"},{id:"raw",btn:"tab-raw",pane:"pane_raw"},{id:"img",btn:"tab-img",pane:"pane_img"}];
@@ -154,6 +205,7 @@ const AUTH_REQUIRED=String("{{AUTH_REQUIRED}}").toLowerCase().trim()==="true";
 });
 </script>
 """.replace("{w}", str(PRINT_WIDTH_PX))
+
 
 def settings_html_form() -> str:
     from logic import settings_effective, SET_KEYS
