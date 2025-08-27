@@ -13,6 +13,26 @@ from fastapi import HTTPException, Request, Response
 # Gast-Token DB (wie zuvor)
 from guest_tokens import GuestDB
 
+# --- Book of Mormon JSON Cache (required by api_bom.py) ---
+BOM_URL = "https://raw.githubusercontent.com/bcbooks/scriptures-json/master/flat/book-of-mormon-flat.json"
+_BOM_CACHE = []
+_BOM_CACHE_TS = 0
+_BOM_CACHE_TTL = 24 * 3600  # 24h
+
+def _get_bom_data(force: bool = False) -> list:
+    """Lädt/ cached das BoM-JSON, wird von api_bom.py verwendet."""
+    global _BOM_CACHE, _BOM_CACHE_TS
+    if force or not _BOM_CACHE or (time.time() - _BOM_CACHE_TS) > _BOM_CACHE_TTL:
+        try:
+            import urllib.request
+            with urllib.request.urlopen(BOM_URL, timeout=15) as resp:
+                _BOM_CACHE = json.loads(resp.read().decode("utf-8"))
+                _BOM_CACHE_TS = time.time()
+                log(f"BoM JSON geladen ({len(_BOM_CACHE)} Verse)")
+        except Exception as e:
+            log("BoM JSON konnte nicht geladen werden:", repr(e))
+            _BOM_CACHE = []
+    return _BOM_CACHE
 # ----------------- Konfiguration -----------------
 
 APP_API_KEY = os.getenv("API_KEY", "change_me")
