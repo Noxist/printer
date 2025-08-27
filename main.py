@@ -35,6 +35,7 @@ app = FastAPI(title="Printer API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 app.include_router(bom_router)  # Register BOM APIs
+app.include_router(sources_router)
 
 PRINT_WIDTH_PX = int(cfg_get("PRINT_WIDTH_PX", 576))
 
