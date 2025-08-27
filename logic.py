@@ -54,12 +54,11 @@ def now_str(fmt="%d.%m.%Y %H:%M") -> str:
     return datetime.now(TZ).strftime(fmt)
 
 def pil_to_base64_png(img: Image.Image) -> str:
-    buf = io.BytesIO()
-    img = img.convert("L")  # Graustufen (nicht nur schwarz/weiß)
-    
     from PIL import ImageOps
-    img = ImageOps.invert(img)  # Invertieren (Schwarz-weiß tauschen)
-
+    img = img.convert("L")               # In Graustufen konvertieren
+    img = ImageOps.invert(img)           # Farben invertieren (Schwarz <-> Weiß)
+    img = img.convert("1")               # In 1-Bit Bitmap (mit Dithering) konvertieren
+    buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
@@ -257,8 +256,8 @@ def render_receipt(
     sender_name: str | None = None
 ) -> Image.Image:
     bg = 255
-    img = Image.new("L", (width_px, 10), color=bg)
-    draw = ImageDraw.Draw(img)
+    img = Image.new('L', (width_px, height), color=255)  # weißer Hintergrund
+    draw.text((x, y), text, fill=0, font=font)          # schwarzer Text
     cur_y = cfg.margin_top
     max_w = width_px - cfg.margin_left - cfg.margin_right
 
