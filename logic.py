@@ -256,11 +256,14 @@ def render_receipt(
     sender_name: str | None = None
 ) -> Image.Image:
     bg = 255
-    img = Image.new('L', (width_px, height), color=255)  # weißer Hintergrund
-    draw.text((x, y), text, fill=0, font=font)          # schwarzer Text
+    # Start mit kleinem Bild, Höhe wird dynamisch ermittelt
+    img = Image.new('L', (width_px, 10), color=bg)
+    draw = ImageDraw.Draw(img)
+
     cur_y = cfg.margin_top
     max_w = width_px - cfg.margin_left - cfg.margin_right
 
+    # Titel mit Textumbruch rendern
     title_lines = _wrap(draw, title.strip(), cfg.font_title, max_w) if title else []
     for ln in title_lines:
         x = _x_for_align(draw, ln, cfg.font_title, width_px, cfg.align_title, cfg.margin_left, cfg.margin_right)
@@ -290,6 +293,7 @@ def render_receipt(
         ascent, descent = cfg.font_time.getmetrics()
         cur_y += int((ascent + descent) * cfg.line_height_mult)
 
+    # Textzeilen mit Umbruch rendern
     for raw in lines:
         if not raw.strip():
             ascent, descent = cfg.font_text.getmetrics()
@@ -302,9 +306,13 @@ def render_receipt(
             cur_y += int((ascent + descent) * cfg.line_height_mult)
 
     cur_y += cfg.margin_bottom
-    out = Image.new("L", (width_px, cur_y), color=bg)
-    out.paste(img, (0, 0))
-    return out
+
+    # Neues Bild mit der berechneten Höhe erstellen und den Inhalt kopieren
+    final_img = Image.new('L', (width_px, cur_y), color=bg)
+    final_img.paste(img, (0, 0))
+
+    return final_img
+
 
 def render_image_with_headers(
     image: Image.Image,
