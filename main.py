@@ -1,34 +1,62 @@
-import os, io
+# main.py
+import os
+import io
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse, FileResponse
 from pydantic import BaseModel
 from PIL import Image
+
 from queue_print import start_background_flusher
 from routes_sources import router as sources_router  # modularer Router
 
 from logic import (
-    log, now_str, pil_to_base64_png, mqtt_publish_image_base64,
-    render_receipt, render_image_with_headers, ReceiptCfg,
-    check_api_key, require_ui_auth, issue_cookie, ui_auth_state,
-    cfg_get, SETTINGS, SET_KEYS, _save_settings, GUESTS,
-    guest_consume_or_error, _guest_check_len_ok  # <— NEU
+    log,
+    now_str,
+    pil_to_base64_png,
+    mqtt_publish_image_base64,
+    render_receipt,
+    render_image_with_headers,
+    ReceiptCfg,
+    check_api_key,
+    require_ui_auth,
+    issue_cookie,
+    ui_auth_state,
+    cfg_get,
+    SETTINGS,
+    SET_KEYS,
+    _save_settings,
+    GUESTS,
+    guest_consume_or_error,
+    _guest_check_len_ok,   # Zeichenlimit-Helper
+    GUEST_MAX_CHARS,       # fuer Hinweis im UI
 )
 
 from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
 
-# --- HIER: app zuerst erstellen, dann Middleware, dann Router registrieren ---
+# --- App & Middleware ---------------------------------------------------------
 app = FastAPI(title="Printer API")
+
 @app.on_event("startup")
 async def _start_queue_worker():
+    # Hintergrund-Worker, der Queue-Jobs zum Drucker schiebt (mit Retry)
     start_background_flusher()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Modularer Quellen-Router (z. B. /api/print/source/dadjoke, /api/print/source/bom)
 app.include_router(sources_router)
+
 # ------------------------------------------------------------------------------
 
 PRINT_WIDTH_PX = int(cfg_get("PRINT_WIDTH_PX", 576))
 
-
+# ------------------------------- Models ---------------------------------------
 class PrintPayload(BaseModel):
     title: str = "TASKS"
     lines: list[str] = []
@@ -39,6 +67,7 @@ class RawPayload(BaseModel):
     text: str
     add_datetime: bool = False
 
+# ------------------------------- Health / Root --------------------------------
 @app.get("/_health", response_class=PlainTextResponse)
 def health():
     return "OK"
@@ -48,7 +77,7 @@ def ok():
     from logic import TOPIC, PUBLISH_QOS
     return {"ok": True, "topic": TOPIC, "qos": PUBLISH_QOS}
 
-# Print Endpoints
+# ------------------------------- API: Print -----------------------------------
 @app.post("/print")
 async def print_job(p: PrintPayload, request: Request):
     check_api_key(request)
@@ -97,7 +126,7 @@ async def api_print_image(
     mqtt_publish_image_base64(b64, cut_paper=1)
     return {"ok": True}
 
-# UI endpoints
+# ------------------------------- UI: Simple Frontend --------------------------
 @app.get("/ui", response_class=HTMLResponse)
 def ui(request: Request):
     auth_required = "false" if require_ui_auth(request) else ("true" if cfg_get("UI_PASS") else "false")
@@ -193,7 +222,7 @@ async def ui_print_image(
         log("ui_print_image error:", repr(e))
         return html_page("Quittungsdruck", f"<div class='card'>Fehler: {e}</div>")
 
-# Guest UI and print endpoints
+# ------------------------------- Guest: UI & Print ----------------------------
 @app.get("/guest/{token}", response_class=HTMLResponse)
 def guest_ui(token: str, request: Request):
     info = GUESTS.validate(token)
@@ -210,7 +239,6 @@ def guest_ui(token: str, request: Request):
     content = content.replace('/ui/print/raw', f'/guest/{token}/print/raw')
     content = content.replace('/ui/print/image', f'/guest/{token}/print/image')
     return html_page("Gastdruck", content)
-
 
 @app.post("/guest/{token}/print/template")
 async def guest_print_template(
@@ -245,12 +273,6 @@ async def guest_print_template(
     mqtt_publish_image_base64(b64, cut_paper=1)
     return RedirectResponse(f"/guest/{token}#tpl", status_code=303)
 
-# --- Zeichenlimit pruefen ---
-total_chars = len(text or "")
-ok, msg = _guest_check_len_ok(total_chars)
-if not ok:
-    return html_page("Gastdruck", msg)
-
 @app.post("/guest/{token}/print/raw")
 async def guest_print_raw(
     token: str,
@@ -277,7 +299,6 @@ async def guest_print_raw(
     mqtt_publish_image_base64(b64, cut_paper=1)
     return RedirectResponse(f"/guest/{token}#raw", status_code=303)
 
-
 @app.post("/guest/{token}/print/image")
 async def guest_print_image(
     token: str,
@@ -291,13 +312,19 @@ async def guest_print_image(
     content = await file.read()
     src = Image.open(io.BytesIO(content))
     cfg = ReceiptCfg()
-    composed = render_image_with_headers(src, PRINT_WIDTH_PX, cfg, title=img_title, subtitle=img_subtitle,
-                                         sender_name=tok["name"])
+    composed = render_image_with_headers(
+        src,
+        PRINT_WIDTH_PX,
+        cfg,
+        title=img_title,
+        subtitle=img_subtitle,
+        sender_name=tok["name"]
+    )
     b64 = pil_to_base64_png(composed)
     mqtt_publish_image_base64(b64, cut_paper=1)
     return RedirectResponse(f"/guest/{token}#img", status_code=303)
 
-# Settings UI and handling
+# ------------------------------- Settings UI ----------------------------------
 @app.get("/ui/settings", response_class=HTMLResponse)
 def ui_settings(request: Request):
     if not require_ui_auth(request):
@@ -343,8 +370,8 @@ def ui_settings_test(request: Request):
     b64 = pil_to_base64_png(img)
     mqtt_publish_image_base64(b64, cut_paper=1)
     return html_page("Einstellungen", "<div class='card'>Testdruck gesendet.</div>")
-from fastapi.responses import FileResponse
 
+# ------------------------------- Debug ----------------------------------------
 @app.get("/debug/last")
 async def debug_last():
     path = "/tmp/last_print.png"
@@ -352,9 +379,8 @@ async def debug_last():
         return FileResponse(path, media_type="image/png")
     return {"error": "no debug file found"}
 
-# --- Helper: sauberes Base-URL hinter Proxy/Render ---
+# --- Helper: sauberes Base-URL hinter Proxy/Render ----------------------------
 def _base_url(request: Request) -> str:
-    # bevorzugt Forwarded-Header
     proto = request.headers.get("x-forwarded-proto") or request.url.scheme
     host  = request.headers.get("x-forwarded-host")  or request.headers.get("host") or request.url.netloc
     return f"{proto}://{host}".rstrip("/")
@@ -363,7 +389,6 @@ def _guest_link(token: str, request: Request) -> str:
     return f"{_base_url(request)}/guest/{token}"
 
 def _copy_btn_js() -> str:
-    # kleiner inline JS-Helfer (einmal je Seite)
     return """
 <script>
 function copyToClipboard(id){
@@ -384,7 +409,7 @@ def _render_guests_admin(request: Request) -> str:
         active = "aktiv" if info.get("active") else "inaktiv"
         quota  = info.get("quota_per_day", 5)
         link   = _guest_link(token, request)
-        rid    = f"lnk_{token[:8]}"  # id fuer input
+        rid    = f"lnk_{token[:8]}"
 
         row = f"""
         <tr>
