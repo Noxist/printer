@@ -43,8 +43,7 @@ PRINT_GAMMA = float(os.getenv("PRINT_GAMMA", "1.0"))
 PRINT_BRIGHTNESS = float(os.getenv("PRINT_BRIGHTNESS", "1.0"))
 PRINT_CONTRAST = float(os.getenv("PRINT_CONTRAST", "1.0"))
 GRAYSCALE_PNG = os.getenv("GRAYSCALE_PNG", "false").lower() in ("1","true","yes","on")
-PRINT_INVERT = os.getenv("PRINT_INVERT", "0").lower() in ("1","true","yes","on")
-DEBUG_SAVE_LAST = os.getenv("DEBUG_SAVE_LAST", "0").lower() in ("1","true","yes","on")
+DEBUG_SAVE_LAST = os.getenv("DEBUG_SAVE_LAST", "0").lower() in ("1","true","yes","on")  # darf env bleiben
 
 # ----------------- MQTT -----------------
 
@@ -175,28 +174,34 @@ def _x_for_align(text: str, font: ImageFont.ImageFont,
 from PIL import ImageOps
 
 def _apply_tone(imgL: Image.Image) -> Image.Image:
-    # img -> L
     if imgL.mode != "L":
         imgL = imgL.convert("L")
-    # Gamma
-    if abs(PRINT_GAMMA - 1.0) > 1e-3:
-        # LUT: out = 255 * (in/255)^(1/gamma)  (klassische Screen-Gamma-Korrektur)
-        inv_g = 1.0 / max(1e-6, PRINT_GAMMA)
+
+    gamma = float(cfg_get("PRINT_GAMMA", 1.0))
+    brightness = float(cfg_get("PRINT_BRIGHTNESS", 1.0))
+    contrast = float(cfg_get("PRINT_CONTRAST", 1.0))
+    invert = str(cfg_get("PRINT_INVERT", False)).lower() in ("1","true","yes","on")
+
+    if invert:
+        imgL = ImageOps.invert(imgL)
+
+    if abs(gamma - 1.0) > 1e-3:
+        inv_g = 1.0 / max(1e-6, gamma)
         lut = [int(pow(i/255.0, inv_g)*255 + 0.5) for i in range(256)]
         imgL = imgL.point(lut, mode="L")
-    # Brightness
-    if abs(PRINT_BRIGHTNESS - 1.0) > 1e-3:
-        lut = [max(0, min(255, int(i*PRINT_BRIGHTNESS))) for i in range(256)]
+
+    if abs(brightness - 1.0) > 1e-3:
+        lut = [max(0, min(255, int(i*brightness))) for i in range(256)]
         imgL = imgL.point(lut, mode="L")
-    # Contrast (simple midpoint stretch)
-    if abs(PRINT_CONTRAST - 1.0) > 1e-3:
+
+    if abs(contrast - 1.0) > 1e-3:
         mid = 127.5
-        lut = [max(0, min(255, int((i - mid)*PRINT_CONTRAST + mid))) for i in range(256)]
+        lut = [max(0, min(255, int((i - mid)*contrast + mid))) for i in range(256)]
         imgL = imgL.point(lut, mode="L")
+
     return imgL
 
 def _ordered_bayer_dither(imgL: Image.Image) -> Image.Image:
-    # kleines 4x4-Bayer-Matrix Dithering
     bayer4 = [
         [ 0,  8,  2, 10],
         [12,  4, 14,  6],
@@ -212,27 +217,46 @@ def _ordered_bayer_dither(imgL: Image.Image) -> Image.Image:
             thr = (bayer4[y & 3][x & 3] + 0.5) * (255.0/16.0)
             outpx[x,y] = 0 if px[x,y] < thr else 255
     return out
-# ----------------- PNG / 1-Bit Pipeline -----------------
 
 def _to_1bit(img: Image.Image) -> Image.Image:
-    # Erst in L zeichnen, dann optional invertieren und hart schwellen
-    if img.mode != "L":
-        img = img.convert("L")
-    if PRINT_INVERT:
-        img = img.point(lambda x: 255 - x)
-    # Harte Schwelle: Schrift bleibt knackig
-    return img.point(lambda x: 0 if x < 128 else 255, mode="1")
+    imgL = img.convert("L") if img.mode != "L" else img
+    imgL = _apply_tone(imgL)
+
+    dither = str(cfg_get("PRINT_DITHER", "floyd")).lower()
+    threshold = int(cfg_get("PRINT_THRESHOLD", 128))
+
+    if dither == "none":
+        return imgL.point(lambda x: 0 if x < threshold else 255, mode="1")
+    if dither == "threshold":
+        return imgL.point(lambda x: 0 if x < threshold else 255, mode="1")
+    if dither == "floyd":
+        return imgL.convert("1", dither=Image.FLOYDSTEINBERG)
+    if dither == "bayer":
+        return _ordered_bayer_dither(imgL)
+    return imgL.convert("1", dither=Image.FLOYDSTEINBERG)
 
 def pil_to_base64_png(img: Image.Image) -> str:
+    # Graustufen-PNG optional
+    grayscale_png = str(cfg_get("GRAYSCALE_PNG", False)).lower() in ("1","true","yes","on")
+    if grayscale_png:
+        imgL = img.convert("L")
+        imgL = _apply_tone(imgL)
+        if DEBUG_SAVE_LAST:
+            try: imgL.save("/tmp/last_print.png", format="PNG", optimize=True)
+            except: pass
+        buf = io.BytesIO()
+        imgL.save(buf, format="PNG", optimize=True)
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+
+    # Standard: 1-Bit mit Dither
     img1 = _to_1bit(img)
     if DEBUG_SAVE_LAST:
-        try:
-            img1.save("/tmp/last_print.png", format="PNG", optimize=True)
-        except Exception:
-            pass
+        try: img1.save("/tmp/last_print.png", format="PNG", optimize=True)
+        except: pass
     buf = io.BytesIO()
     img1.save(buf, format="PNG", optimize=True)
     return base64.b64encode(buf.getvalue()).decode("ascii")
+")
 
 def mqtt_publish_image_base64(b64_png: str, cut_paper: int = 1,
                               paper_width_mm: int = 0, paper_height_mm: int = 0):
@@ -485,6 +509,14 @@ SET_KEYS = [
     ("RECEIPT_TIME_SHOW_MINUTES", True, "checkbox", None),
     ("RECEIPT_TIME_SHOW_SECONDS", False, "checkbox", None),
     ("RECEIPT_TIME_PREFIX", "", "text", None),
+    ("PRINT_DITHER", "floyd", "select", ["none", "threshold", "floyd", "bayer"]),
+    ("PRINT_THRESHOLD", 128, "number", None),
+    ("PRINT_GAMMA", 1.0, "number", None),
+    ("PRINT_BRIGHTNESS", 1.0, "number", None),
+    ("PRINT_CONTRAST", 1.0, "number", None),
+    ("GRAYSCALE_PNG", False, "checkbox", None),
+    ("PRINT_INVERT", False, "checkbox", None),
+
 ]
 
 def settings_effective() -> dict:
