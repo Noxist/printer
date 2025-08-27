@@ -29,7 +29,8 @@ from logic import (
 )
 from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
 f
-rom api_bom import router as bom_router  # BOM API als separater router einbinden
+from routes_sources import router as sources_router
+app.include_router(sources_router)
 
 app = FastAPI(title="Printer API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
