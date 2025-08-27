@@ -28,7 +28,7 @@ from logic import (
     guest_consume_or_error,
 )
 from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
-f
+
 from routes_sources import router as sources_router
 app.include_router(sources_router)
 
