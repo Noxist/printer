@@ -312,3 +312,11 @@ def ui_settings_test(request: Request):
     b64 = pil_to_base64_png(img)
     mqtt_publish_image_base64(b64, cut_paper=1)
     return html_page("Einstellungen", "<div class='card'>Testdruck gesendet.</div>")
+from fastapi.responses import FileResponse
+
+@app.get("/debug/last")
+async def debug_last():
+    path = "/tmp/last_print.png"
+    if os.path.exists(path):
+        return FileResponse(path, media_type="image/png")
+    return {"error": "no debug file found"}
