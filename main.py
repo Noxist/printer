@@ -9,10 +9,12 @@ from routes_sources import router as sources_router  # modularer Router
 
 from logic import (
     log, now_str, pil_to_base64_png, mqtt_publish_image_base64,
-    render_receipt, render_image_with_headers, ReceiptCfg, check_api_key,
-    require_ui_auth, issue_cookie, ui_auth_state, cfg_get,
-    SETTINGS, SET_KEYS, _save_settings, GUESTS, guest_consume_or_error,
+    render_receipt, render_image_with_headers, ReceiptCfg,
+    check_api_key, require_ui_auth, issue_cookie, ui_auth_state,
+    cfg_get, SETTINGS, SET_KEYS, _save_settings, GUESTS,
+    guest_consume_or_error, _guest_check_len_ok  # <— NEU
 )
+
 from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
 
 # --- HIER: app zuerst erstellen, dann Middleware, dann Router registrieren ---
@@ -198,11 +200,17 @@ def guest_ui(token: str, request: Request):
     if not info:
         return html_page("Gast", "<div class='card'>Ungültiger oder deaktivierter Link.</div>")
     remaining = GUESTS.remaining_today(token)
-    content = f"<div class='card'>Gast: <b>{info['name']}</b> · heute übrig: {remaining}</div>" + guest_ui_html("false")
+    limit_hint = f"<div class='card'>Maximale Textlaenge: {GUEST_MAX_CHARS} Zeichen pro Druck.</div>"
+    content = (
+        f"<div class='card'>Gast: <b>{info['name']}</b> · heute übrig: {remaining}</div>"
+        + limit_hint
+        + guest_ui_html("false")
+    )
     content = content.replace('/ui/print/template', f'/guest/{token}/print/template')
     content = content.replace('/ui/print/raw', f'/guest/{token}/print/raw')
     content = content.replace('/ui/print/image', f'/guest/{token}/print/image')
     return html_page("Gastdruck", content)
+
 
 @app.post("/guest/{token}/print/template")
 async def guest_print_template(
@@ -211,15 +219,37 @@ async def guest_print_template(
     lines: str = Form(""),
     add_dt: bool = Form(False),
 ):
+    # --- Zeichenlimit prüfen (Titel + Zeilen + evtl. Datum) ---
+    txt_full = (title or "").strip() + "\n" + (lines or "")
+    if add_dt:
+        txt_full += f"\n{now_str('%Y-%m-%d %H:%M')}"
+    ok, msg = _guest_check_len_ok(len(txt_full))
+    if not ok:
+        return html_page("Gastdruck", msg)
+
+    # Token erst konsumieren, wenn Länge ok ist
     tok = guest_consume_or_error(token)
     if not tok:
         return html_page("Gastdruck", "<div class='card'>Limit erreicht oder Link ungültig.</div>")
+
     cfg = ReceiptCfg()
-    img = render_receipt(title.strip(), [ln.rstrip() for ln in lines.splitlines()], add_time=add_dt,
-                         width_px=PRINT_WIDTH_PX, cfg=cfg, sender_name=tok["name"])
+    img = render_receipt(
+        title.strip(),
+        [ln.rstrip() for ln in (lines or "").splitlines()],
+        add_time=add_dt,
+        width_px=PRINT_WIDTH_PX,
+        cfg=cfg,
+        sender_name=tok["name"]
+    )
     b64 = pil_to_base64_png(img)
     mqtt_publish_image_base64(b64, cut_paper=1)
     return RedirectResponse(f"/guest/{token}#tpl", status_code=303)
+
+# --- Zeichenlimit pruefen ---
+total_chars = len(text or "")
+ok, msg = _guest_check_len_ok(total_chars)
+if not ok:
+    return html_page("Gastdruck", msg)
 
 @app.post("/guest/{token}/print/raw")
 async def guest_print_raw(
@@ -227,15 +257,26 @@ async def guest_print_raw(
     text: str = Form(""),
     add_dt: bool = Form(False),
 ):
+    # --- Zeichenlimit prüfen (Text + evtl. Datum) ---
+    full = (text or "")
+    if add_dt:
+        full += f"\n{now_str('%Y-%m-%d %H:%M')}"
+    ok, msg = _guest_check_len_ok(len(full))
+    if not ok:
+        return html_page("Gastdruck", msg)
+
+    # Token erst konsumieren, wenn Länge ok ist
     tok = guest_consume_or_error(token)
     if not tok:
         return html_page("Gastdruck", "<div class='card'>Limit erreicht oder Link ungültig.</div>")
+
     cfg = ReceiptCfg()
-    lines = (text + (f"\n{now_str('%Y-%m-%d %H:%M')}" if add_dt else "")).splitlines()
+    lines = full.splitlines()
     img = render_receipt("", lines, add_time=False, width_px=PRINT_WIDTH_PX, cfg=cfg, sender_name=tok["name"])
     b64 = pil_to_base64_png(img)
     mqtt_publish_image_base64(b64, cut_paper=1)
     return RedirectResponse(f"/guest/{token}#raw", status_code=303)
+
 
 @app.post("/guest/{token}/print/image")
 async def guest_print_image(
