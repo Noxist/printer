@@ -16,6 +16,7 @@ from guest_tokens import GuestDB
 # ----------------- Konfiguration -----------------
 
 APP_API_KEY = os.getenv("API_KEY", "change_me")
+GUEST_MAX_CHARS = int(os.getenv("GUEST_MAX_CHARS", "10000"))
 
 MQTT_HOST = os.getenv("MQTT_HOST")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "8883"))
