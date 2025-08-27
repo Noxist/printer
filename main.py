@@ -5,26 +5,38 @@ from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 from pydantic import BaseModel
+from PIL import Image
 
 from logic import (
-    log, now_str, pil_to_base64_png, mqtt_publish_image_base64,
-    render_receipt, render_image_with_headers, ReceiptCfg,
-    check_api_key, require_ui_auth, issue_cookie, ui_auth_state,
-    cfg_get, SETTINGS, SET_KEYS, _save_settings, GUESTS, _guest_consume_or_error
+    log,
+    now_str,
+    pil_to_base64_png,
+    mqtt_publish_image_base64,
+    render_receipt,
+    render_image_with_headers,
+    ReceiptCfg,
+    check_api_key,
+    require_ui_auth,
+    issue_cookie,
+    ui_auth_state,
+    cfg_get,
+    SETTINGS,
+    SET_KEYS,
+    _save_settings,
+    GUESTS,
+    guest_consume_or_error,
 )
 from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
 
-# Importiere den BOM-Router
-from api_bom import router as bom_router
+from api_bom import router as bom_router  # BOM API als separater router einbinden
 
 app = FastAPI(title="Printer API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-app.include_router(bom_router)  # Bindet BOM-Endpunkte ein
+app.include_router(bom_router)  # Register BOM APIs
 
 PRINT_WIDTH_PX = int(cfg_get("PRINT_WIDTH_PX", 576))
 
-# Datenklassen
 class PrintPayload(BaseModel):
     title: str = "TASKS"
     lines: list[str] = []
@@ -35,18 +47,16 @@ class RawPayload(BaseModel):
     text: str
     add_datetime: bool = False
 
-# Diagnostics
 @app.get("/_health", response_class=PlainTextResponse)
 def health():
     return "OK"
 
-# API Root
 @app.get("/")
 def ok():
     from logic import TOPIC, PUBLISH_QOS
     return {"ok": True, "topic": TOPIC, "qos": PUBLISH_QOS}
 
-# Print endpoints
+# Print Endpoints
 @app.post("/print")
 async def print_job(p: PrintPayload, request: Request):
     check_api_key(request)
@@ -171,7 +181,7 @@ async def ui_print_image(
     img_title: str | None = Form(None),
     img_subtitle: str | None = Form(None),
     pass_: str | None = Form(None, alias="pass"),
-    remember: bool = Form(False)
+    remember: bool = Form(False),
 ):
     authed, set_cookie = ui_handle_auth_and_cookie(request, pass_, remember)
     if not authed:
@@ -211,7 +221,7 @@ async def guest_print_template(
     lines: str = Form(""),
     add_dt: bool = Form(False),
 ):
-    tok = _guest_consume_or_error(token)
+    tok = guest_consume_or_error(token)
     if not tok:
         return html_page("Gastdruck", "<div class='card'>Limit erreicht oder Link ungültig.</div>")
     cfg = ReceiptCfg()
@@ -227,7 +237,7 @@ async def guest_print_raw(
     text: str = Form(""),
     add_dt: bool = Form(False),
 ):
-    tok = _guest_consume_or_error(token)
+    tok = guest_consume_or_error(token)
     if not tok:
         return html_page("Gastdruck", "<div class='card'>Limit erreicht oder Link ungültig.</div>")
     cfg = ReceiptCfg()
@@ -244,7 +254,7 @@ async def guest_print_image(
     img_title: str | None = Form(None),
     img_subtitle: str | None = Form(None),
 ):
-    tok = _guest_consume_or_error(token)
+    tok = guest_consume_or_error(token)
     if not tok:
         return html_page("Gastdruck", "<div class='card'>Limit erreicht oder Link ungültig.</div>")
     content = await file.read()
