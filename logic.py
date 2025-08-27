@@ -34,7 +34,7 @@ TZ = ZoneInfo(os.getenv("TIMEZONE", "Europe/Zurich"))
 PRINT_WIDTH_PX = int(os.getenv("PRINT_WIDTH_PX", "576"))
 
 SETTINGS_FILE = os.getenv("SETTINGS_FILE", "settings.json")
-GUEST_DB_FILE=/data/guest_tokens.json
+GUEST_DB_FILE = os.getenv("GUEST_DB_FILE", "/data/guest_tokens.json")
 GUESTS = GuestDB(GUEST_DB_FILE)
 
 # Rendering Tweaks
