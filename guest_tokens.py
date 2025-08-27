@@ -1,23 +1,29 @@
 # guest_tokens.py
+
 from __future__ import annotations
-import os, json, time, secrets
+
+import os
+import json
+import time
+import secrets
+
 from typing import Dict, Any, List, Tuple
 
 class GuestDB:
     """
     Einfache Token-DB mit Tageskontingent.
+
     Datei-Format (JSON):
-    {
-      "tokens": {
-        "<token>": {
-          "name": "Yaralie",
-          "created": 1710000000,
-          "active": true,
-          "quota_per_day": 5,
-          "used": { "2025-08-25": 3, ... }
-        },
-        ...
-      }
+
+    "tokens": {
+      "tokenstring": {
+        "name": "Yaralie",
+        "created": 1710000000,
+        "active": true,
+        "quota_per_day": 5,
+        "used": { "2025-08-25": 3, ... }
+      },
+      ...
     }
     """
 
@@ -27,14 +33,15 @@ class GuestDB:
         self._load()
 
     # --------- persistence ---------
+
     def _load(self):
         if not os.path.exists(self.path):
             return
         try:
             with open(self.path, "r", encoding="utf-8") as f:
                 self.data = json.load(f)
-            if "tokens" not in self.data:
-                self.data["tokens"] = {}
+                if "tokens" not in self.data:
+                    self.data["tokens"] = {}
         except Exception:
             self.data = {"tokens": {}}
 
@@ -45,6 +52,7 @@ class GuestDB:
         os.replace(tmp, self.path)
 
     # --------- utils ---------
+
     @staticmethod
     def _today() -> str:
         return time.strftime("%Y-%m-%d")
@@ -54,6 +62,7 @@ class GuestDB:
         return int(time.time())
 
     # --------- public API ---------
+
     def create(self, name: str, quota_per_day: int = 5) -> str:
         token = secrets.token_urlsafe(24)  # kurz & sicher
         self.data["tokens"][token] = {
@@ -68,7 +77,7 @@ class GuestDB:
 
     def revoke(self, token: str) -> bool:
         tok = self.data["tokens"].get(token)
-        if not tok: 
+        if not tok:
             return False
         tok["active"] = False
         self._save()
