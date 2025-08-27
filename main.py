@@ -320,3 +320,58 @@ async def debug_last():
     if os.path.exists(path):
         return FileResponse(path, media_type="image/png")
     return {"error": "no debug file found"}
+
+def _render_guests_admin() -> str:
+    rows = []
+    for token, info in GUESTS.list():
+        name = info.get("name","Gast")
+        created = info.get("created", 0)
+        active = "aktiv" if info.get("active") else "inaktiv"
+        quota = info.get("quota_per_day",5)
+        rows.append(
+            f"<tr><td><code style='font-size:.9em'>{token}</code></td>"
+            f"<td>{name}</td><td>{active}</td><td>{quota}/Tag</td>"
+            f"<td><form method='post' action='/ui/guests/revoke' style='display:inline'>"
+            f"<input type='hidden' name='token' value='{token}'><button class='secondary'>Revoke</button></form></td></tr>"
+        )
+    table = "<table style='width:100%; border-collapse:collapse'>"
+    table += "<tr><th style='text-align:left'>Token</th><th>Name</th><th>Status</th><th>Quota</th><th>Aktion</th></tr>"
+    table += "".join(rows) if rows else "<tr><td colspan='5'>Keine Tokens vorhanden.</td></tr>"
+    table += "</table>"
+
+    form = """
+    <div class='card' style='margin-top:14px'>
+      <form method='post' action='/ui/guests/create' class='row' style='gap:10px'>
+        <input type='text' name='name' placeholder='Name' style='max-width:240px'>
+        <input type='number' name='quota' value='5' min='1' step='1' style='max-width:120px'>
+        <button type='submit'>Token erstellen</button>
+      </form>
+    </div>
+    """
+    return "<section class='card'><h3 class='title'>Gaeste</h3>"+table+"</section>"+form
+
+@app.get("/ui/guests", response_class=HTMLResponse)
+def ui_guests(request: Request):
+    if not require_ui_auth(request):
+        return html_page("Gaeste", "<div class='card'>Nicht angemeldet.</div>")
+    return html_page("Gaeste", _render_guests_admin())
+
+@app.post("/ui/guests/create", response_class=HTMLResponse)
+async def ui_guests_create(request: Request):
+    if not require_ui_auth(request):
+        return html_page("Gaeste", "<div class='card'>Nicht angemeldet.</div>")
+    form = await request.form()
+    name = (form.get("name") or "Gast").strip()
+    quota = int((form.get("quota") or 5))
+    token = GUESTS.create(name, quota_per_day=quota)
+    return html_page("Gaeste", f"<div class='card'>Token erstellt: <code>{token}</code></div>"+_render_guests_admin())
+
+@app.post("/ui/guests/revoke", response_class=HTMLResponse)
+async def ui_guests_revoke(request: Request):
+    if not require_ui_auth(request):
+        return html_page("Gaeste", "<div class='card'>Nicht angemeldet.</div>")
+    form = await request.form()
+    tok = form.get("token") or ""
+    ok = GUESTS.revoke(tok)
+    msg = "Token deaktiviert." if ok else "Token nicht gefunden."
+    return html_page("Gaeste", f"<div class='card'>{msg}</div>"+_render_guests_admin())
