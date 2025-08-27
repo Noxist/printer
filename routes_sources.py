@@ -30,7 +30,7 @@ def _check_api_key(request: Request) -> None:
 
 def _render_png_bytes(title: str, lines: list[str]) -> bytes:
     cfg = ReceiptCfg()
-    img = render_receipt(title, lines, add_time=True, width_px=PRINT_WIDTH_PX, cfg=cfg)
+    img = render_receipt(title, lines, add_time=False, width_px=PRINT_WIDTH_PX, cfg=cfg)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
