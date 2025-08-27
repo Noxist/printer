@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 from pydantic import BaseModel
 from PIL import Image
+from routes_sources import router as sources_router
 
 from logic import (
     log,
