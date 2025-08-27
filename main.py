@@ -1,45 +1,28 @@
-import os
-import io
-import random
+import os, io
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 from pydantic import BaseModel
 from PIL import Image
-from routes_sources import router as sources_router
+
+from routes_sources import router as sources_router  # modularer Router
 
 from logic import (
-    log,
-    now_str,
-    pil_to_base64_png,
-    mqtt_publish_image_base64,
-    render_receipt,
-    render_image_with_headers,
-    ReceiptCfg,
-    check_api_key,
-    require_ui_auth,
-    issue_cookie,
-    ui_auth_state,
-    cfg_get,
-    SETTINGS,
-    SET_KEYS,
-    _save_settings,
-    GUESTS,
-    guest_consume_or_error,
+    log, now_str, pil_to_base64_png, mqtt_publish_image_base64,
+    render_receipt, render_image_with_headers, ReceiptCfg, check_api_key,
+    require_ui_auth, issue_cookie, ui_auth_state, cfg_get,
+    SETTINGS, SET_KEYS, _save_settings, GUESTS, guest_consume_or_error,
 )
 from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
 
-from routes_sources import router as sources_router
-app.include_router(sources_router)
-
+# --- HIER: app zuerst erstellen, dann Middleware, dann Router registrieren ---
 app = FastAPI(title="Printer API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
 app.include_router(sources_router)
-app.include_router(bom_router)  # Register BOM APIs
-
+# ------------------------------------------------------------------------------
 
 PRINT_WIDTH_PX = int(cfg_get("PRINT_WIDTH_PX", 576))
+
 
 class PrintPayload(BaseModel):
     title: str = "TASKS"
