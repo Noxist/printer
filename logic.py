@@ -480,6 +480,10 @@ def ui_auth_state(request: Request, pass_: Optional[str], remember: bool) -> tup
     return False, False
 
 # ----------------- Guest Tokens -----------------
+def _guest_check_len_ok(total_chars: int) -> tuple[bool, str]:
+    if total_chars <= GUEST_MAX_CHARS:
+        return True, ""
+    return False, f"<div class='card'>Zu lang: {total_chars} Zeichen. Max erlaubt: {GUEST_MAX_CHARS}.</div>"
 
 def guest_consume_or_error(token: str) -> Optional[dict]:
     return GUESTS.consume(token)
