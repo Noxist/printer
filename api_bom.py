@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Request
 import random
+
 from logic import (
     check_api_key,
     _get_bom_data,
