@@ -256,7 +256,6 @@ def pil_to_base64_png(img: Image.Image) -> str:
     buf = io.BytesIO()
     img1.save(buf, format="PNG", optimize=True)
     return base64.b64encode(buf.getvalue()).decode("ascii")
-")
 
 def mqtt_publish_image_base64(b64_png: str, cut_paper: int = 1,
                               paper_width_mm: int = 0, paper_height_mm: int = 0):
