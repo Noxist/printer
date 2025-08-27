@@ -12,10 +12,8 @@ import random
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import List
-
 from PIL import Image, ImageDraw, ImageFont
 from fastapi import HTTPException, Request, Response
-
 from guest_tokens import GuestDB
 
 APP_API_KEY = os.getenv("API_KEY", "change_me")
@@ -33,7 +31,6 @@ TZ = ZoneInfo(os.getenv("TIMEZONE", "Europe/Zurich"))
 PRINT_WIDTH_PX = int(os.getenv("PRINT_WIDTH_PX", "576"))
 SETTINGS_FILE = os.getenv("SETTINGS_FILE", "settings.json")
 GUEST_DB_FILE = os.getenv("GUEST_DB_FILE", "guest_tokens.json")
-
 GUESTS = GuestDB(GUEST_DB_FILE)
 
 # MQTT Setup
@@ -135,7 +132,7 @@ def cfg_get_float(name: str, default: float) -> float:
 
 def cfg_get_bool(name: str, default: bool) -> bool:
     v = str(cfg_get(name, default)).lower()
-    return v in ("1","true","yes","on","y","t")
+    return v in ("1", "true", "yes", "on", "y", "t")
 
 # Helpers for Receipt Rendering
 def _safe_font(path_or_name: str, size: int) -> ImageFont.FreeTypeFont:
@@ -143,8 +140,10 @@ def _safe_font(path_or_name: str, size: int) -> ImageFont.FreeTypeFont:
         return ImageFont.truetype(path_or_name, size=size)
     except Exception:
         for cand in ("DejaVuSans.ttf", "Arial.ttf"):
-            try: return ImageFont.truetype(cand, size=size)
-            except: pass
+            try:
+                return ImageFont.truetype(cand, size=size)
+            except:
+                pass
     return ImageFont.load_default()
 
 def _textlength(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont) -> int:
@@ -156,7 +155,8 @@ def _textlength(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFo
 
 def _wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_px: int) -> List[str]:
     words = text.split()
-    if not words: return [""]
+    if not words:
+        return [""]
     lines, cur = [], words[0]
     for w in words[1:]:
         t = f"{cur} {w}"
@@ -187,6 +187,7 @@ class ReceiptCfg:
 
         self.gap_title_text = 10
         self.line_height_mult = 1.15
+
         self.align_title = cfg_get("RECEIPT_ALIGN_TITLE", "left")
         self.align_text = cfg_get("RECEIPT_ALIGN_TEXT", "left")
         self.align_time = cfg_get("RECEIPT_ALIGN_TIME", "left")
@@ -371,9 +372,12 @@ def ui_auth_state(request: Request, pass_: str | None, remember: bool) -> tuple[
         return True, bool(remember)
     return False, False
 
-# UI Settings helpers
+# Helper to consume Guest token (ensures imported and callable)
+def guest_consume_or_error(token: str) -> dict | None:
+    return GUESTS.consume(token)
+
+# Settings helpers
 SET_KEYS = [
-    # Layout allgemein
     ("RECEIPT_PRESET", "clean", "select", ["clean", "compact", "bigtitle"]),
     ("RECEIPT_MARGIN_TOP", 28, "number", None),
     ("RECEIPT_MARGIN_BOTTOM", 18, "number", None),
@@ -384,21 +388,15 @@ SET_KEYS = [
     ("RECEIPT_RULE_AFTER_TITLE", False, "checkbox", None),
     ("RECEIPT_RULE_PX", 1, "number", None),
     ("RECEIPT_RULE_PAD", 6, "number", None),
-
-    # Ausrichtung
     ("RECEIPT_ALIGN_TITLE", "left", "select", ["left", "center", "right"]),
     ("RECEIPT_ALIGN_TEXT", "left", "select", ["left", "center", "right"]),
     ("RECEIPT_ALIGN_TIME", "left", "select", ["left", "center", "right"]),
-
-    # Schrift
     ("RECEIPT_TITLE_SIZE", 36, "number", None),
     ("RECEIPT_TEXT_SIZE", 28, "number", None),
     ("RECEIPT_TIME_SIZE", 24, "number", None),
     ("RECEIPT_TITLE_FONT", "DejaVuSans.ttf", "text", None),
     ("RECEIPT_TEXT_FONT", "DejaVuSans.ttf", "text", None),
     ("RECEIPT_TIME_FONT", "DejaVuSans.ttf", "text", None),
-
-    # Zeit
     ("RECEIPT_TIME_SHOW_MINUTES", True, "checkbox", None),
     ("RECEIPT_TIME_SHOW_SECONDS", False, "checkbox", None),
     ("RECEIPT_TIME_PREFIX", "", "text", None),
