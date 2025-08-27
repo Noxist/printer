@@ -321,57 +321,120 @@ async def debug_last():
         return FileResponse(path, media_type="image/png")
     return {"error": "no debug file found"}
 
-def _render_guests_admin() -> str:
+# --- Helper: sauberes Base-URL hinter Proxy/Render ---
+def _base_url(request: Request) -> str:
+    # bevorzugt Forwarded-Header
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host  = request.headers.get("x-forwarded-host")  or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}".rstrip("/")
+
+def _guest_link(token: str, request: Request) -> str:
+    return f"{_base_url(request)}/guest/{token}"
+
+def _copy_btn_js() -> str:
+    # kleiner inline JS-Helfer (einmal je Seite)
+    return """
+<script>
+function copyToClipboard(id){
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.select(); el.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(el.value).then(()=>{
+    const b=el.nextElementSibling; if(b){ b.textContent="Kopiert ✓"; setTimeout(()=>b.textContent="Kopieren",1200); }
+  });
+}
+</script>
+"""
+
+def _render_guests_admin(request: Request) -> str:
     rows = []
     for token, info in GUESTS.list():
-        name = info.get("name","Gast")
-        created = info.get("created", 0)
+        name   = info.get("name", "Gast")
         active = "aktiv" if info.get("active") else "inaktiv"
-        quota = info.get("quota_per_day",5)
-        rows.append(
-            f"<tr><td><code style='font-size:.9em'>{token}</code></td>"
-            f"<td>{name}</td><td>{active}</td><td>{quota}/Tag</td>"
-            f"<td><form method='post' action='/ui/guests/revoke' style='display:inline'>"
-            f"<input type='hidden' name='token' value='{token}'><button class='secondary'>Revoke</button></form></td></tr>"
-        )
-    table = "<table style='width:100%; border-collapse:collapse'>"
-    table += "<tr><th style='text-align:left'>Token</th><th>Name</th><th>Status</th><th>Quota</th><th>Aktion</th></tr>"
-    table += "".join(rows) if rows else "<tr><td colspan='5'>Keine Tokens vorhanden.</td></tr>"
-    table += "</table>"
+        quota  = info.get("quota_per_day", 5)
+        link   = _guest_link(token, request)
+        rid    = f"lnk_{token[:8]}"  # id fuer input
+
+        row = f"""
+        <tr>
+          <td style="max-width:0">
+            <div class="row" style="gap:8px; align-items:center">
+              <input id="{rid}" type="text" value="{link}" readonly
+                     style="width: 36ch; max-width:100%; background:#0d1117; border:1px solid #263043; color:#dfe7ff; padding:6px 8px; border-radius:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.9rem;">
+              <button type="button" class="secondary" onclick="copyToClipboard('{rid}')" style="padding:6px 10px;">Kopieren</button>
+            </div>
+          </td>
+          <td>{name}</td>
+          <td><span class="badge">{active}</span></td>
+          <td>{quota}/Tag</td>
+          <td>
+            <form method="post" action="/ui/guests/revoke" style="display:inline">
+              <input type="hidden" name="token" value="{token}">
+              <button class="danger">Revoke</button>
+            </form>
+          </td>
+        </tr>
+        """
+        rows.append(row)
+
+    table = f"""
+    <section class="card">
+      <h3 class="title">Gaeste</h3>
+      <div style="overflow:auto">
+      <table style="width:100%; border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="text-align:left; padding:10px 8px;">Link</th>
+            <th style="text-align:left; padding:10px 8px;">Name</th>
+            <th style="text-align:left; padding:10px 8px;">Status</th>
+            <th style="text-align:left; padding:10px 8px;">Quota</th>
+            <th style="text-align:left; padding:10px 8px;">Aktion</th>
+          </tr>
+        </thead>
+        <tbody>
+          {("".join(rows) if rows else '<tr><td colspan="5" style="padding:10px 8px">Keine Tokens vorhanden.</td></tr>')}
+        </tbody>
+      </table>
+      </div>
+    </section>
+    """
 
     form = """
-    <div class='card' style='margin-top:14px'>
-      <form method='post' action='/ui/guests/create' class='row' style='gap:10px'>
-        <input type='text' name='name' placeholder='Name' style='max-width:240px'>
-        <input type='number' name='quota' value='5' min='1' step='1' style='max-width:120px'>
+    <section class='card' style='margin-top:14px'>
+      <h3 class="title">Neuen Gast-Link erstellen</h3>
+      <form method='post' action='/ui/guests/create' class='row' style='gap:10px; flex-wrap:wrap'>
+        <input type='text' name='name' placeholder='Name' style='min-width:220px; max-width:320px'>
+        <input type='number' name='quota' value='5' min='1' step='1' style='width:120px'>
         <button type='submit'>Token erstellen</button>
       </form>
-    </div>
+    </section>
     """
-    return "<section class='card'><h3 class='title'>Gaeste</h3>"+table+"</section>"+form
+    return _copy_btn_js() + table + form
 
 @app.get("/ui/guests", response_class=HTMLResponse)
 def ui_guests(request: Request):
     if not require_ui_auth(request):
         return html_page("Gaeste", "<div class='card'>Nicht angemeldet.</div>")
-    return html_page("Gaeste", _render_guests_admin())
+    return html_page("Gaeste", _render_guests_admin(request))
 
 @app.post("/ui/guests/create", response_class=HTMLResponse)
 async def ui_guests_create(request: Request):
     if not require_ui_auth(request):
         return html_page("Gaeste", "<div class='card'>Nicht angemeldet.</div>")
-    form = await request.form()
-    name = (form.get("name") or "Gast").strip()
+    form  = await request.form()
+    name  = (form.get("name") or "Gast").strip()
     quota = int((form.get("quota") or 5))
     token = GUESTS.create(name, quota_per_day=quota)
-    return html_page("Gaeste", f"<div class='card'>Token erstellt: <code>{token}</code></div>"+_render_guests_admin())
+    link  = _guest_link(token, request)
+    msg   = f"<div class='card'>Neuer Link: <a href='{link}' target='_blank'>{link}</a></div>"
+    return html_page("Gaeste", msg + _render_guests_admin(request))
 
 @app.post("/ui/guests/revoke", response_class=HTMLResponse)
 async def ui_guests_revoke(request: Request):
     if not require_ui_auth(request):
         return html_page("Gaeste", "<div class='card'>Nicht angemeldet.</div>")
     form = await request.form()
-    tok = form.get("token") or ""
-    ok = GUESTS.revoke(tok)
-    msg = "Token deaktiviert." if ok else "Token nicht gefunden."
-    return html_page("Gaeste", f"<div class='card'>{msg}</div>"+_render_guests_admin())
+    tok  = form.get("token") or ""
+    ok   = GUESTS.revoke(tok)
+    msg  = "<div class='card'>Token deaktiviert.</div>" if ok else "<div class='card'>Token nicht gefunden.</div>"
+    return html_page("Gaeste", msg + _render_guests_admin(request))
