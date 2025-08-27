@@ -37,6 +37,12 @@ GUEST_DB_FILE = os.getenv("GUEST_DB_FILE", "guest_tokens.json")
 GUESTS = GuestDB(GUEST_DB_FILE)
 
 # Rendering Tweaks
+PRINT_DITHER = os.getenv("PRINT_DITHER", "floyd").lower()
+PRINT_THRESHOLD = int(os.getenv("PRINT_THRESHOLD", "128"))
+PRINT_GAMMA = float(os.getenv("PRINT_GAMMA", "1.0"))
+PRINT_BRIGHTNESS = float(os.getenv("PRINT_BRIGHTNESS", "1.0"))
+PRINT_CONTRAST = float(os.getenv("PRINT_CONTRAST", "1.0"))
+GRAYSCALE_PNG = os.getenv("GRAYSCALE_PNG", "false").lower() in ("1","true","yes","on")
 PRINT_INVERT = os.getenv("PRINT_INVERT", "0").lower() in ("1","true","yes","on")
 DEBUG_SAVE_LAST = os.getenv("DEBUG_SAVE_LAST", "0").lower() in ("1","true","yes","on")
 
@@ -166,6 +172,46 @@ def _x_for_align(text: str, font: ImageFont.ImageFont,
         return width - mr - tl
     return ml
 
+from PIL import ImageOps
+
+def _apply_tone(imgL: Image.Image) -> Image.Image:
+    # img -> L
+    if imgL.mode != "L":
+        imgL = imgL.convert("L")
+    # Gamma
+    if abs(PRINT_GAMMA - 1.0) > 1e-3:
+        # LUT: out = 255 * (in/255)^(1/gamma)  (klassische Screen-Gamma-Korrektur)
+        inv_g = 1.0 / max(1e-6, PRINT_GAMMA)
+        lut = [int(pow(i/255.0, inv_g)*255 + 0.5) for i in range(256)]
+        imgL = imgL.point(lut, mode="L")
+    # Brightness
+    if abs(PRINT_BRIGHTNESS - 1.0) > 1e-3:
+        lut = [max(0, min(255, int(i*PRINT_BRIGHTNESS))) for i in range(256)]
+        imgL = imgL.point(lut, mode="L")
+    # Contrast (simple midpoint stretch)
+    if abs(PRINT_CONTRAST - 1.0) > 1e-3:
+        mid = 127.5
+        lut = [max(0, min(255, int((i - mid)*PRINT_CONTRAST + mid))) for i in range(256)]
+        imgL = imgL.point(lut, mode="L")
+    return imgL
+
+def _ordered_bayer_dither(imgL: Image.Image) -> Image.Image:
+    # kleines 4x4-Bayer-Matrix Dithering
+    bayer4 = [
+        [ 0,  8,  2, 10],
+        [12,  4, 14,  6],
+        [ 3, 11,  1,  9],
+        [15,  7, 13,  5]
+    ]
+    w,h = imgL.size
+    px = imgL.load()
+    out = Image.new("1", (w,h), 255)
+    outpx = out.load()
+    for y in range(h):
+        for x in range(w):
+            thr = (bayer4[y & 3][x & 3] + 0.5) * (255.0/16.0)
+            outpx[x,y] = 0 if px[x,y] < thr else 255
+    return out
 # ----------------- PNG / 1-Bit Pipeline -----------------
 
 def _to_1bit(img: Image.Image) -> Image.Image:
