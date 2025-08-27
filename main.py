@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 from pydantic import BaseModel
 from PIL import Image
-
+from queue_print import start_background_flusher
 from routes_sources import router as sources_router  # modularer Router
 
 from logic import (
@@ -17,6 +17,9 @@ from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
 
 # --- HIER: app zuerst erstellen, dann Middleware, dann Router registrieren ---
 app = FastAPI(title="Printer API")
+@app.on_event("startup")
+async def _start_queue_worker():
+    start_background_flusher()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.include_router(sources_router)
 # ------------------------------------------------------------------------------
