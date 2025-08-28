@@ -109,13 +109,17 @@ class Source:
 
         lines = [
             f"{today} · {PLACE}",
-            f"Now {now_t:.0f}°C {now_ico}  {wind_dir(now_wd)} {now_ws:.0f} km/h",
-            "",  # spacer
+            "──────────────",
+            f"{now_ico}  Now {now_t:.0f}°C   {wind_dir(now_wd)} {now_ws:.0f} km/h",
+            "",
             f"{h_morn}: {s_morn}",
             f"{h_noon}: {s_noon}",
             f"{h_eve}:  {s_eve}",
-            "",  # spacer
-            f"Tomorrow {tomo_ico}  {tomo}  ({tomo_p})",
+            "──────────────",
+            f"Tomorrow {tomo_ico}",
+            f"Min {tmin[1]:.0f}°C · Max {tmax[1]:.0f}°C",
+            f"Rain: {tomo_p}",
         ]
+
 
         return {"title": "WEATHER · BERN", "lines": lines}
