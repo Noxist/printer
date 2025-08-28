@@ -13,7 +13,7 @@ def _fmt(text: str, author: str) -> dict:
     if not text:
         text = "Keep going. You're doing great."
     return {
-        "title": "",
+      # "title": "",
         "lines": [
             f"“{text}”", 
             "",
