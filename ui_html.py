@@ -225,7 +225,8 @@ def settings_html_form() -> str:
         else:
             field = f'<input type="text" name="{key}" value="{val}">'
         rows.append(f"<div><label>{label}</label>{field}</div>")
-form = f"""
+
+    form = f"""
     <section class="card">
       <form method="post" action="/ui/settings/save">
         <div class="grid">
@@ -239,6 +240,7 @@ form = f"""
     </section>
     """
     return form
+
 
 def guest_ui_html(auth_required_flag: str) -> str:
     return HTML_UI.replace("{{AUTH_REQUIRED}}", auth_required_flag)
