@@ -328,14 +328,14 @@ async def guest_print_image(
 @app.get("/ui/settings", response_class=HTMLResponse)
 def ui_settings(request: Request):
     if not require_ui_auth(request):
-        return html_page("Einstellungen", "<div class='card'>Nicht angemeldet.</div>")
-    content = "<h3 class='title'>Einstellungen</h3>" + settings_html_form()
-    return html_page("Einstellungen", content)
+        return html_page("Settings", "<div class='card'>Nicht angemeldet.</div>")
+    content = "<h3 class='title'>Settings</h3>" + settings_html_form()
+    return html_page("Settings", content)
 
 @app.post("/ui/settings/save", response_class=HTMLResponse)
 async def ui_settings_save(request: Request):
     if not require_ui_auth(request):
-        return html_page("Einstellungen", "<div class='card'>Nicht angemeldet.</div>")
+        return html_page("Settings", "<div class='card'>Nicht angemeldet.</div>")
     form = await request.form()
     for key, default, typ, _ in SET_KEYS:
         if typ == "checkbox":
@@ -358,18 +358,18 @@ async def ui_settings_save(request: Request):
 @app.get("/ui/settings/test", response_class=HTMLResponse)
 def ui_settings_test(request: Request):
     if not require_ui_auth(request):
-        return html_page("Einstellungen", "<div class='card'>Nicht angemeldet.</div>")
+        return html_page("Settings", "<div class='card'>Nicht angemeldet.</div>")
     cfg = ReceiptCfg()
     sample_lines = [
-        "Schriftstelle lesen",
-        "Wasser trinken",
-        "Planung – 10 Min",
-        "Sport – 20 Min"
+        "Read - 10 Min",
+        "Drink water",
+        "Plan – 10 Min",
+        "Exercise – 20 Min"
     ]
     img = render_receipt("TEST", sample_lines, add_time=True, width_px=PRINT_WIDTH_PX, cfg=cfg)
     b64 = pil_to_base64_png(img)
     mqtt_publish_image_base64(b64, cut_paper=1)
-    return html_page("Einstellungen", "<div class='card'>Testdruck gesendet.</div>")
+    return html_page("Settings", "<div class='card'>Testdruck gesendet.</div>")
 
 # ------------------------------- Debug ----------------------------------------
 @app.get("/debug/last")
@@ -405,8 +405,8 @@ function copyToClipboard(id){
 def _render_guests_admin(request: Request) -> str:
     rows = []
     for token, info in GUESTS.list():
-        name   = info.get("name", "Gast")
-        active = "aktiv" if info.get("active") else "inaktiv"
+        name   = info.get("name", "Guest")
+        active = "active" if info.get("active") else "inactive"
         quota  = info.get("quota_per_day", 5)
         link   = _guest_link(token, request)
         rid    = f"lnk_{token[:8]}"
