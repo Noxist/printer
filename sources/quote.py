@@ -13,8 +13,12 @@ def _fmt(text: str, author: str) -> dict:
     if not text:
         text = "Keep going. You're doing great."
     return {
-        "title": "QUOTE OF THE DAY",
-        "lines": [f"“{text}”", f"— {author}"]
+        "title": "",
+        "lines": [
+            f"“{text}”", 
+            ”",
+            f"— {author}"
+        ]
     }
 
 async def _fetch_zenquotes() -> dict | None:
