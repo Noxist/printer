@@ -3,7 +3,7 @@ from logic import PRINT_WIDTH_PX, cfg_get, UI_PASS, require_ui_auth, COOKIE_NAME
 
 HTML_BASE = r"""
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{title}</title>
@@ -64,12 +64,12 @@ HTML_BASE = r"""
 <body>
   <header class="top">
     <div class="top-inner wrap">
-      <div class="title">Quittungsdruck</div>
+      <div class="title">Receipt Printer</div>
       <div class="spacer"></div>
       <nav class="nav">
-        <a class="link" href="/ui">Drucken</a>
-        <a class="link" href="/ui/guests">Gäste</a>
-        <a class="link" href="/ui/settings">Einstellungen</a>
+        <a class="link" href="/ui">Print</a>
+        <a class="link" href="/ui/guests">Guests</a>
+        <a class="link" href="/ui/settings">Settings</a>
         <a class="link" href="/ui/logout" title="Logout">Logout</a>
       </nav>
     </div>
@@ -86,7 +86,7 @@ def html_page(title: str, content: str) -> HTMLResponse:
     return HTMLResponse(HTML_BASE.replace("{title}", title).replace("{content}", content))
 
 HTML_UI = r"""
-<div class="tabs" role="tablist" aria-label="Modus">
+<div class="tabs" role="tablist" aria-label="Mode">
   <div class="tab" role="tab" id="tab-tpl" aria-controls="pane_tpl" aria-selected="true" tabindex="0">Template</div>
   <div class="tab" role="tab" id="tab-raw" aria-controls="pane_raw" aria-selected="false" tabindex="-1">Raw</div>
   <div class="tab" role="tab" id="tab-img" aria-controls="pane_img" aria-selected="false" tabindex="-1">Image</div>
@@ -97,25 +97,25 @@ HTML_UI = r"""
   <form method="post" action="/ui/print/template">
     <div class="grid">
       <div>
-        <label for="title">Titel</label>
-        <input id="title" type="text" name="title" value="MORGEN" autocomplete="off">
+        <label for="title">Title</label>
+        <input id="title" type="text" name="title" value="TOMORROW" autocomplete="off">
       </div>
       <div>
-        <label for="lines">Zeilen (eine pro Zeile)</label>
-        <textarea id="lines" name="lines" placeholder="Schriftstelle lesen – 10 Min&#10;Wasser trinken"></textarea>
+        <label for="lines">Lines (one per line)</label>
+        <textarea id="lines" name="lines" placeholder="Read scripture — 10 min&#10;Drink water"></textarea>
       </div>
     </div>
     <div class="row" style="margin-top:12px">
-      <label><input type="checkbox" name="add_dt" checked> Datum/Zeit automatisch anhaengen</label>
+      <label><input type="checkbox" name="add_dt" checked> Append date/time automatically</label>
       <div class="grow"></div>
       <div id="auth-wrap" class="row" style="gap:10px">
-        <label for="pass">UI-Passwort</label>
-        <input id="pass" type="password" name="pass" placeholder="nur falls noetig" style="max-width:220px">
-        <label id="remember-wrap"><input type="checkbox" name="remember"> Angemeldet bleiben</label>
+        <label for="pass">UI password</label>
+        <input id="pass" type="password" name="pass" placeholder="only if required" style="max-width:220px">
+        <label id="remember-wrap"><input type="checkbox" name="remember"> Stay signed in</label>
       </div>
     </div>
     <div class="row" style="margin-top:12px; gap:12px">
-      <button type="submit">Drucken</button>
+      <button type="submit">Print</button>
     </div>
   </form>
 </section>
@@ -124,20 +124,20 @@ HTML_UI = r"""
 <section id="pane_raw" class="card" role="tabpanel" aria-labelledby="tab-raw" hidden>
   <form method="post" action="/ui/print/raw">
     <div>
-      <label for="rawtext">Rohtext</label>
-      <textarea id="rawtext" name="text" placeholder="Direkttext hier eingeben"></textarea>
+      <label for="rawtext">Raw text</label>
+      <textarea id="rawtext" name="text" placeholder="Type text here"></textarea>
     </div>
     <div class="row" style="margin-top:12px">
-      <label><input type="checkbox" name="add_dt"> Datum/Zeit automatisch anhaengen</label>
+      <label><input type="checkbox" name="add_dt"> Append date/time automatically</label>
       <div class="grow"></div>
       <div id="auth-wrap2" class="row" style="gap:10px">
-        <label for="pass2">UI-Passwort</label>
-        <input id="pass2" type="password" name="pass" placeholder="nur falls noetig" style="max-width:220px">
-        <label id="remember-wrap2"><input type="checkbox" name="remember"> Angemeldet bleiben</label>
+        <label for="pass2">UI password</label>
+        <input id="pass2" type="password" name="pass" placeholder="only if required" style="max-width:220px">
+        <label id="remember-wrap2"><input type="checkbox" name="remember"> Stay signed in</label>
       </div>
     </div>
     <div class="row" style="margin-top:12px; gap:12px">
-      <button type="submit">Drucken</button>
+      <button type="submit">Print</button>
     </div>
   </form>
 </section>
@@ -147,26 +147,26 @@ HTML_UI = r"""
   <form method="post" action="/ui/print/image" enctype="multipart/form-data">
     <div class="grid">
       <div>
-        <label for="imgfile">Imagedatei</label>
+        <label for="imgfile">Image file</label>
         <input id="imgfile" type="file" name="file" accept="image/*" required>
       </div>
       <div>
-        <label for="img_title">Titel (optional)</label>
-        <input id="img_title" type="text" name="img_title" placeholder="Titel">
-        <label for="img_subtitle" style="margin-top:8px">Untertitel (optional)</label>
-        <input id="img_subtitle" type="text" name="img_subtitle" placeholder="Untertitel">
+        <label for="img_title" style="margin-top:0">Title (optional)</label>
+        <input id="img_title" type="text" name="img_title" placeholder="Title">
+        <label for="img_subtitle" style="margin-top:8px">Subtitle (optional)</label>
+        <input id="img_subtitle" type="text" name="img_subtitle" placeholder="Subtitle">
       </div>
     </div>
     <div class="row" style="margin-top:12px">
       <div class="grow"></div>
       <div id="auth-wrap3" class="row" style="gap:10px">
-        <label for="pass3">UI-Passwort</label>
-        <input id="pass3" type="password" name="pass" placeholder="nur falls noetig" style="max-width:220px">
-        <label id="remember-wrap3"><input type="checkbox" name="remember"> Angemeldet bleiben</label>
+        <label for="pass3">UI password</label>
+        <input id="pass3" type="password" name="pass" placeholder="only if required" style="max-width:220px">
+        <label id="remember-wrap3"><input type="checkbox" name="remember"> Stay signed in</label>
       </div>
     </div>
     <div class="row" style="margin-top:12px; gap:12px">
-      <button type="submit">Drucken</button>
+      <button type="submit">Print</button>
     </div>
   </form>
 </section>
@@ -193,7 +193,7 @@ tabs.forEach(t=>{
 window.addEventListener("hashchange",initFromHash);
 initFromHash();
 
-// Passwort-UI automatisch ausblenden
+// Hide password UI if not required
 const AUTH_REQUIRED=String("{{AUTH_REQUIRED}}").toLowerCase().trim()==="true";
 ["auth-wrap","auth-wrap2","auth-wrap3"].forEach(id=>{
   const el=document.getElementById(id);
@@ -225,15 +225,15 @@ def settings_html_form() -> str:
         else:
             field = f'<input type="text" name="{key}" value="{val}">'
         rows.append(f"<div><label>{label}</label>{field}</div>")
-    form = f"""
+form = f"""
     <section class="card">
       <form method="post" action="/ui/settings/save">
         <div class="grid">
           {''.join(rows)}
         </div>
         <div class="row" style="margin-top:12px; gap:12px">
-          <button type="submit">Speichern</button>
-          <a class="link" href="/ui/settings/test">Testdruck</a>
+          <button type="submit">Save</button>
+          <a class="link" href="/ui/settings/test">Test print</a>
         </div>
       </form>
     </section>
