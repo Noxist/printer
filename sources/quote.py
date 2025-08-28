@@ -16,7 +16,7 @@ def _fmt(text: str, author: str) -> dict:
         "title": "",
         "lines": [
             f"“{text}”", 
-            ”",
+            "",
             f"— {author}"
         ]
     }
