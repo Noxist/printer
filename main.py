@@ -131,7 +131,7 @@ async def api_print_image(
 def ui(request: Request):
     auth_required = "false" if require_ui_auth(request) else ("true" if cfg_get("UI_PASS") else "false")
     html = HTML_UI.replace("{{AUTH_REQUIRED}}", auth_required)
-    return html_page("Quittungsdruck", html)
+    return html_page("Receipt Printer", html)
 
 @app.get("/ui/logout")
 def ui_logout():
@@ -156,7 +156,7 @@ async def ui_print_template(
 ):
     authed, set_cookie = ui_handle_auth_and_cookie(request, pass_, remember)
     if not authed:
-        return html_page("Quittungsdruck", "<div class='card'>Falsches Passwort.</div>")
+        return html_page("Receipt Printer", "<div class='card'>Wrong password.</div>")
     try:
         cfg = ReceiptCfg()
         img = render_receipt(title.strip(), [ln.rstrip() for ln in lines.splitlines()], add_time=add_dt, width_px=PRINT_WIDTH_PX, cfg=cfg)
@@ -168,7 +168,7 @@ async def ui_print_template(
         return resp
     except Exception as e:
         log("ui_print_template error:", repr(e))
-        return html_page("Quittungsdruck", f"<div class='card'>Fehler: {e}</div>")
+        return html_page("Receipt Printer", f"<div class='card'>Error: {e}</div>")
 
 @app.post("/ui/print/raw")
 async def ui_print_raw(
@@ -180,7 +180,7 @@ async def ui_print_raw(
 ):
     authed, set_cookie = ui_handle_auth_and_cookie(request, pass_, remember)
     if not authed:
-        return html_page("Quittungsdruck", "<div class='card'>Falsches Passwort.</div>")
+        return html_page("Receipt Printer", "<div class='card'>Wrong password.</div>")
     try:
         cfg = ReceiptCfg()
         lines = (text + (f"\n{now_str('%Y-%m-%d %H:%M')}" if add_dt else "")).splitlines()
@@ -193,7 +193,7 @@ async def ui_print_raw(
         return resp
     except Exception as e:
         log("ui_print_raw error:", repr(e))
-        return html_page("Quittungsdruck", f"<div class='card'>Fehler: {e}</div>")
+        return html_page("Receipt Printer", f"<div class='card'>Error: {e}</div>")
 
 @app.post("/ui/print/image")
 async def ui_print_image(
@@ -206,7 +206,7 @@ async def ui_print_image(
 ):
     authed, set_cookie = ui_handle_auth_and_cookie(request, pass_, remember)
     if not authed:
-        return html_page("Quittungsdruck", "<div class='card'>Falsches Passwort.</div>")
+        return html_page("Receipt Printer", "<div class='card'>Wrong password.</div>")
     try:
         content = await file.read()
         src = Image.open(io.BytesIO(content))
@@ -220,25 +220,25 @@ async def ui_print_image(
         return resp
     except Exception as e:
         log("ui_print_image error:", repr(e))
-        return html_page("Quittungsdruck", f"<div class='card'>Fehler: {e}</div>")
+        return html_page("Receipt Printer", f"<div class='card'>Error: {e}</div>")
 
 # ------------------------------- Guest: UI & Print ----------------------------
 @app.get("/guest/{token}", response_class=HTMLResponse)
 def guest_ui(token: str, request: Request):
     info = GUESTS.validate(token)
     if not info:
-        return html_page("Gast", "<div class='card'>Ungültiger oder deaktivierter Link.</div>")
+        return html_page("Gast", "<div class='card'>Invalid or disabled link.</div>")
     remaining = GUESTS.remaining_today(token)
-    limit_hint = f"<div class='card'>Maximale Textlaenge: {GUEST_MAX_CHARS} Zeichen pro Druck.</div>"
+    limit_hint = f"<div class='card'>Maximum text length: {GUEST_MAX_CHARS} characters per print.</div>"
     content = (
-        f"<div class='card'>Gast: <b>{info['name']}</b> · heute übrig: {remaining}</div>"
+        f"<div class='card'>Guest: <b>{info['name']}</b> · left today: {remaining}</div>"
         + limit_hint
         + guest_ui_html("false")
     )
     content = content.replace('/ui/print/template', f'/guest/{token}/print/template')
     content = content.replace('/ui/print/raw', f'/guest/{token}/print/raw')
     content = content.replace('/ui/print/image', f'/guest/{token}/print/image')
-    return html_page("Gastdruck", content)
+    return html_page("Guest print", content)
 
 @app.post("/guest/{token}/print/template")
 async def guest_print_template(
@@ -253,12 +253,12 @@ async def guest_print_template(
         txt_full += f"\n{now_str('%Y-%m-%d %H:%M')}"
     ok, msg = _guest_check_len_ok(len(txt_full))
     if not ok:
-        return html_page("Gastdruck", msg)
+        return html_page("Guest print", msg)
 
     # Token erst konsumieren, wenn Länge ok ist
     tok = guest_consume_or_error(token)
     if not tok:
-        return html_page("Gastdruck", "<div class='card'>Limit erreicht oder Link ungültig.</div>")
+        return html_page("Guest print", "<div class='card'>Limit reached or invalid link.</div>")
 
     cfg = ReceiptCfg()
     img = render_receipt(
@@ -285,12 +285,12 @@ async def guest_print_raw(
         full += f"\n{now_str('%Y-%m-%d %H:%M')}"
     ok, msg = _guest_check_len_ok(len(full))
     if not ok:
-        return html_page("Gastdruck", msg)
+        return html_page("Guest print", msg)
 
     # Token erst konsumieren, wenn Länge ok ist
     tok = guest_consume_or_error(token)
     if not tok:
-        return html_page("Gastdruck", "<div class='card'>Limit erreicht oder Link ungültig.</div>")
+        return html_page("Guest print", "<div class='card'>Limit reached or invalid link.</div>")
 
     cfg = ReceiptCfg()
     lines = full.splitlines()
@@ -308,7 +308,7 @@ async def guest_print_image(
 ):
     tok = guest_consume_or_error(token)
     if not tok:
-        return html_page("Gastdruck", "<div class='card'>Limit erreicht oder Link ungültig.</div>")
+        return html_page("Guest print", "<div class='card'>Limit reached or invalid link.</div>")
     content = await file.read()
     src = Image.open(io.BytesIO(content))
     cfg = ReceiptCfg()
@@ -328,14 +328,14 @@ async def guest_print_image(
 @app.get("/ui/settings", response_class=HTMLResponse)
 def ui_settings(request: Request):
     if not require_ui_auth(request):
-        return html_page("Settings", "<div class='card'>Nicht angemeldet.</div>")
+        return html_page("Settings", "<div class='card'>Not signed in.</div>")
     content = "<h3 class='title'>Settings</h3>" + settings_html_form()
     return html_page("Settings", content)
 
 @app.post("/ui/settings/save", response_class=HTMLResponse)
 async def ui_settings_save(request: Request):
     if not require_ui_auth(request):
-        return html_page("Settings", "<div class='card'>Nicht angemeldet.</div>")
+        return html_page("Settings", "<div class='card'>Not signed in.</div>")
     form = await request.form()
     for key, default, typ, _ in SET_KEYS:
         if typ == "checkbox":
@@ -358,7 +358,7 @@ async def ui_settings_save(request: Request):
 @app.get("/ui/settings/test", response_class=HTMLResponse)
 def ui_settings_test(request: Request):
     if not require_ui_auth(request):
-        return html_page("Settings", "<div class='card'>Nicht angemeldet.</div>")
+        return html_page("Settings", "<div class='card'>Not signed in.</div>")
     cfg = ReceiptCfg()
     sample_lines = [
         "Read - 10 Min",
@@ -435,7 +435,7 @@ def _render_guests_admin(request: Request) -> str:
 
     table = f"""
     <section class="card">
-      <h3 class="title">Gaeste</h3>
+      <h3 class="title">Guests</h3>
       <div style="overflow:auto">
       <table style="width:100%; border-collapse:collapse">
         <thead>
@@ -444,11 +444,11 @@ def _render_guests_admin(request: Request) -> str:
             <th style="text-align:left; padding:10px 8px;">Name</th>
             <th style="text-align:left; padding:10px 8px;">Status</th>
             <th style="text-align:left; padding:10px 8px;">Quota</th>
-            <th style="text-align:left; padding:10px 8px;">Aktion</th>
+            <th style="text-align:left; padding:10px 8px;">Action</th>
           </tr>
         </thead>
         <tbody>
-          {("".join(rows) if rows else '<tr><td colspan="5" style="padding:10px 8px">Keine Tokens vorhanden.</td></tr>')}
+          {("".join(rows) if rows else '<tr><td colspan="5" style="padding:10px 8px">No tokens yet.</td></tr>')}
         </tbody>
       </table>
       </div>
@@ -457,11 +457,11 @@ def _render_guests_admin(request: Request) -> str:
 
     form = """
     <section class='card' style='margin-top:14px'>
-      <h3 class="title">Neuen Gast-Link erstellen</h3>
+      <h3 class="title">Create new guest link</h3>
       <form method='post' action='/ui/guests/create' class='row' style='gap:10px; flex-wrap:wrap'>
         <input type='text' name='name' placeholder='Name' style='min-width:220px; max-width:320px'>
         <input type='number' name='quota' value='5' min='1' step='1' style='width:120px'>
-        <button type='submit'>Token erstellen</button>
+        <button type='submit'>Create token</button>
       </form>
     </section>
     """
@@ -470,27 +470,27 @@ def _render_guests_admin(request: Request) -> str:
 @app.get("/ui/guests", response_class=HTMLResponse)
 def ui_guests(request: Request):
     if not require_ui_auth(request):
-        return html_page("Gaeste", "<div class='card'>Nicht angemeldet.</div>")
-    return html_page("Gaeste", _render_guests_admin(request))
+        return html_page("Guest", "<div class='card'>Not signed in.</div>")
+    return html_page("Guest", _render_guests_admin(request))
 
 @app.post("/ui/guests/create", response_class=HTMLResponse)
 async def ui_guests_create(request: Request):
     if not require_ui_auth(request):
-        return html_page("Gaeste", "<div class='card'>Nicht angemeldet.</div>")
+        return html_page("Guest", "<div class='card'>Not signed in.</div>")
     form  = await request.form()
     name  = (form.get("name") or "Gast").strip()
     quota = int((form.get("quota") or 5))
     token = GUESTS.create(name, quota_per_day=quota)
     link  = _guest_link(token, request)
-    msg   = f"<div class='card'>Neuer Link: <a href='{link}' target='_blank'>{link}</a></div>"
-    return html_page("Gaeste", msg + _render_guests_admin(request))
+    msg   = f"<div class='card'>New link: <a href='{link}' target='_blank'>{link}</a></div>"
+    return html_page("Guest", msg + _render_guests_admin(request))
 
 @app.post("/ui/guests/revoke", response_class=HTMLResponse)
 async def ui_guests_revoke(request: Request):
     if not require_ui_auth(request):
-        return html_page("Gaeste", "<div class='card'>Nicht angemeldet.</div>")
+        return html_page("Guest", "<div class='card'>Not signed in.</div>")
     form = await request.form()
     tok  = form.get("token") or ""
     ok   = GUESTS.revoke(tok)
-    msg  = "<div class='card'>Token deaktiviert.</div>" if ok else "<div class='card'>Token nicht gefunden.</div>"
-    return html_page("Gaeste", msg + _render_guests_admin(request))
+    msg  = "<div class='card'>Token deactivated.</div>" if ok else "<div class='card'>Token nicht gefunden.</div>"
+    return html_page("Guest", msg + _render_guests_admin(request))
