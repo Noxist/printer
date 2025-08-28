@@ -344,7 +344,7 @@ def render_receipt(
 
     title_lines = _wrap(title.strip(), cfg.font_title, max_w) if (title and title.strip()) else []
     time_line = _time_str(cfg) if add_time else None
-    sender_line = f"Von: {sender_name}" if sender_name else None
+    sender_line = f"From: {sender_name}" if sender_name else None
 
     lh_title = _line_height(cfg.font_title, cfg.line_height_mult)
     lh_text  = _line_height(cfg.font_text,  cfg.line_height_mult)
@@ -483,7 +483,7 @@ def ui_auth_state(request: Request, pass_: Optional[str], remember: bool) -> tup
 def _guest_check_len_ok(total_chars: int) -> tuple[bool, str]:
     if total_chars <= GUEST_MAX_CHARS:
         return True, ""
-    return False, f"<div class='card'>Zu lang: {total_chars} Zeichen. Max erlaubt: {GUEST_MAX_CHARS}.</div>"
+    return False, f"<div class='card'>Too long: {total_chars} characters. Max allowed: {GUEST_MAX_CHARS}.</div>"
 
 def guest_consume_or_error(token: str) -> Optional[dict]:
     return GUESTS.consume(token)
