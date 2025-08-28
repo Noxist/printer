@@ -82,7 +82,7 @@ async def print_from_source(
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"source '{name}' failed: {e}")
 
-    default_title = (title or name).upper()
+    default_title = (title or ("" if name == "quote" else name)).upper()
     belegtitel, lines = _normalize_source_result(result, default_title)
 
     # PNG-Preview
