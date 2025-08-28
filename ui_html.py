@@ -87,12 +87,12 @@ def html_page(title: str, content: str) -> HTMLResponse:
 
 HTML_UI = r"""
 <div class="tabs" role="tablist" aria-label="Modus">
-  <div class="tab" role="tab" id="tab-tpl" aria-controls="pane_tpl" aria-selected="true" tabindex="0">Vorlage</div>
+  <div class="tab" role="tab" id="tab-tpl" aria-controls="pane_tpl" aria-selected="true" tabindex="0">Template</div>
   <div class="tab" role="tab" id="tab-raw" aria-controls="pane_raw" aria-selected="false" tabindex="-1">Raw</div>
-  <div class="tab" role="tab" id="tab-img" aria-controls="pane_img" aria-selected="false" tabindex="-1">Bild</div>
+  <div class="tab" role="tab" id="tab-img" aria-controls="pane_img" aria-selected="false" tabindex="-1">Image</div>
 </div>
 
-<!-- VORLAGE -->
+<!-- Template -->
 <section id="pane_tpl" class="card" role="tabpanel" aria-labelledby="tab-tpl">
   <form method="post" action="/ui/print/template">
     <div class="grid">
@@ -142,12 +142,12 @@ HTML_UI = r"""
   </form>
 </section>
 
-<!-- BILD -->
+<!-- Image -->
 <section id="pane_img" class="card" role="tabpanel" aria-labelledby="tab-img" hidden>
   <form method="post" action="/ui/print/image" enctype="multipart/form-data">
     <div class="grid">
       <div>
-        <label for="imgfile">Bilddatei</label>
+        <label for="imgfile">Imagedatei</label>
         <input id="imgfile" type="file" name="file" accept="image/*" required>
       </div>
       <div>
