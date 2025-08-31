@@ -1,5 +1,5 @@
-# dm_both.py
-from dm_base import format_dm
+# sources/dm_both.py
+from .dm_base import format_dm
 
 class Source:
     async def get_text(self):
