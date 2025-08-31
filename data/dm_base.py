@@ -1,7 +1,7 @@
-# dm_base.py
+# sources/dm_base.py
 import random
 from typing import Literal, Dict, Any
-from dm_data import DM_PASSAGES
+from .dm_data import DM_PASSAGES
 
 Lang = Literal["en", "de", "both"]
 
@@ -17,7 +17,6 @@ def format_dm(lang: Lang) -> Dict[str, list[str]]:
         return {"title": ref_en, "lines": [f"“{txt_en}”"]}
     if lang == "de":
         return {"title": ref_de, "lines": [f"„{txt_de}“"]}
-    # both
     return {
         "title": f"{ref_en}  /  {ref_de}",
         "lines": [
