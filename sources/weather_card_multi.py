@@ -105,8 +105,8 @@ def _compose(payloads:list) -> bytes:
 
 class Source:
     async def get_png(self, **kwargs):
-        q = kwargs.get("query") or {}
-        raw = (q.get("places") or q.get("place") or "bern").lower().replace(" ", "")
+        # Query aus kwargs ziehen (direkt, nicht nested)
+        raw = (kwargs.get("places") or kwargs.get("place") or "bern").lower().replace(" ", "")
         ids = [p for p in raw.split(",") if p in PLACES] or ["bern"]
 
         payloads = []
@@ -123,6 +123,7 @@ class Source:
         return _compose(payloads)
 
     async def get_text(self, **kwargs):
-        # Fallback, falls jemand ohne PNG anfragt
-        q = kwargs.get("query") or {}
-        return {"title": "WEATHER", "lines": [f"Use ?places=bern,unterseen&as_png=1  (got: {q})"]}
+        return {
+            "title": "WEATHER",
+            "lines": [f"Use ?places=bern,unterseen&as_png=1 (got: {kwargs})"]
+        }
