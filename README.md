@@ -1,106 +1,58 @@
-MQTT Thermal Printer API
+# MQTT Thermal Printer API
 
-This repository provides a lightweight service to print dynamic content to a thermal receipt printer via MQTT.
+This repository provides a lightweight service to print dynamic content to a thermal receipt printer via **MQTT**.  
 The system is designed for automation and smart home integrations, enabling tasks such as printing weather updates, news headlines, or jokes directly from API endpoints.
 
+---
+
+## System Overview
+
+1. **Content Sources**  
+   - Each source retrieves structured text (e.g., weather, news, jokes).  
+   - Sources implement a unified interface `get_text()` returning a title and text lines.  
+
+2. **Rendering & Conversion**  
+   - Text is rendered into a monochrome PNG image.  
+   - The image is base64-encoded for transport.  
+
+3. **Transport via MQTT**  
+   - The payload is wrapped in JSON:  
+     ```json
+     {
+       "data_type": "png",
+       "data_base64": "<encoded image>"
+     }
+     ```  
+   - Published to a configured MQTT topic with QoS 2.  
+
+4. **Printer**  
+   - The printer subscribes to the topic and prints the decoded PNG.  
+   - **Note:** This printer does not use ESC/POS. It expects PNG images wrapped in JSON.  
 
 ---
 
-System Overview
-
-1. Content Sources
-
-Each source retrieves structured text (e.g., weather, news, jokes).
-
-Sources implement a unified interface get_text() returning a title and text lines.
-
-
-
-2. Rendering & Conversion
-
-Text is rendered into a monochrome PNG image.
-
-The image is base64-encoded for transport.
-
-
-
-3. Transport via MQTT
-
-The payload is wrapped in JSON:
-
-{
-  "data_type": "png",
-  "data_base64": "<encoded image>"
-}
-
-Published to a configured MQTT topic with QoS 2.
-
-
-
-4. Printer
-
-The printer subscribes to the topic and prints the decoded PNG.
-
-Note: This printer does not use ESC/POS. It expects PNG images wrapped in JSON.
-
-
-
-
-
----
-
-Repository Structure
-
-.
-├── main.py              # FastAPI entrypoint and server setup
-├── logic.py             # File watching, PDF→PNG conversion, base64 encoding
-├── queue_print.py       # Publishes print jobs to MQTT
-├── routes_sources.py    # API endpoints for different print sources
-├── ui_html.py           # Minimal web interface
-├── guest_tokens.py      # Guest token handling
-├── sources/
-│   ├── base.py          # Protocol definition for all sources
-│   ├── fun.py           # Chuck Norris jokes or random facts
-│   ├── news.py          # News headlines via NewsAPI
-│   └── weather_unterseen.py  # Current weather for Unterseen (Open-Meteo)
-├── requirements.txt     # Python dependencies
-└── Cloud Printer User Manual V2.pdf  # Printer documentation
-
-
----
-
-API Endpoints
+## API Endpoints
 
 The FastAPI application exposes endpoints to trigger print jobs. Examples:
 
-GET /print/weather → Prints current weather in Unterseen.
+- `GET /print/weather` → Prints current weather in Unterseen.  
+- `GET /print/news` → Prints a random news headline.  
+- `GET /print/fun` → Prints a joke or fact.  
 
-GET /print/news → Prints a random news headline.
-
-GET /print/fun → Prints a joke or fact.
-
-
-Each endpoint:
-
-1. Fetches and formats data from its source.
-
-
-2. Renders the text as an image.
-
-
-3. Publishes the print job via MQTT.
-
-
-
+Each endpoint:  
+1. Fetches and formats data from its source.  
+2. Renders the text as an image.  
+3. Publishes the print job via MQTT.  
 
 ---
 
-Configuration
+## Configuration
 
-The service is configured via environment variables.
+The service is configured via environment variables.  
 
-Example .env file (safe template):
+### Example `.env` file (template):
 
+```ini
 # Authentication
 API_KEY=<YOUR_API_KEY>
 UI_PASS=<YOUR_UI_PASSWORD>
@@ -126,39 +78,3 @@ PRINT_THRESHOLD=128
 # Sources
 NEWSAPI_KEY=<YOUR_NEWSAPI_KEY>
 NEWS_COUNTRY=US
-
-
----
-
-Testing Without a Printer
-
-To validate the output without printer hardware:
-
-1. Subscribe to the MQTT topic to inspect payloads:
-
-mosquitto_sub -h <BROKER_HOST> -p 8883 --cafile ca.pem \
-  -u <BROKER_USERNAME> -P <BROKER_PASSWORD> -t "<PRINTER_TOPIC>" -v
-
-
-2. Alternatively, run a dummy subscriber script to decode the base64 PNG and save it locally.
-
-
-
-
----
-
-Developer Notes
-
-The system uses MQTT with JSON-wrapped PNG payloads — not ESC/POS.
-
-Each source is modular. To add a new source:
-
-1. Implement a class with get_text() in sources/.
-
-
-2. Register it in routes_sources.py.
-
-
-
-Designed for extendibility (additional endpoints, new data sources, alternative printers).
-
