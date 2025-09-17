@@ -1,5 +1,5 @@
 from fastapi.responses import HTMLResponse
-from logic import PRINT_WIDTH_PX, cfg_get, UI_PASS, require_ui_auth, COOKIE_NAME
+from logic import PRINT_WIDTH_PX
 
 HTML_BASE = r"""
 <!doctype html>
@@ -84,10 +84,10 @@ HTML_BASE = r"""
       <div class="title">Receipt Printer</div>
       <div class="spacer"></div>
       <nav class="nav">
-          <a class="link" href="/ui" data-nav>Print</a>
-          <a class="link" href="/ui/guests" data-nav>Guests</a>
-          <a class="link" href="/ui/settings" data-nav>Settings</a>
-          <a class="link" href="/ui/logout" title="Logout">Logout</a>
+        <a class="link" href="/ui" data-nav>Print</a>
+        <a class="link" href="/ui/guests" data-nav>Guests</a>
+        <a class="link" href="/ui/settings" data-nav>Settings</a>
+        <a class="link" href="/ui/logout" title="Logout">Logout</a>
       </nav>
     </div>
   </header>
@@ -95,6 +95,81 @@ HTML_BASE = r"""
   <main class="wrap">
     {content}
   </main>
+
+  <script>
+  // ---- SPA-like nav + re-init after partial loads ----
+  function initTabs(){
+    const tabs=[{id:"tpl",btn:"tab-tpl",pane:"pane_tpl"},{id:"raw",btn:"tab-raw",pane:"pane_raw"},{id:"img",btn:"tab-img",pane:"pane_img"}];
+    function selectTab(id){
+      tabs.forEach(t=>{
+        const btn=document.getElementById(t.btn), pane=document.getElementById(t.pane), active=(t.id===id);
+        if(btn){ btn.setAttribute("aria-selected", active?"true":"false"); btn.tabIndex=active?0:-1; }
+        if(pane){ pane.hidden=!active; }
+      });
+      try{ history.replaceState(null,"","#"+id); }catch{}
+    }
+    function initFromHash(){
+      const h=(location.hash||"#tpl").slice(1);
+      const known=["tpl","raw","img"];
+      selectTab(known.includes(h)?h:"tpl");
+    }
+    const btns=[..."tab-tpl,tab-raw,tab-img".split(",")].map(id=>document.getElementById(id)).filter(Boolean);
+    btns.forEach((el, idx)=>{
+      const id=["tpl","raw","img"][idx];
+      el.onclick=()=>selectTab(id);
+      el.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); selectTab(id); } };
+    });
+    window.addEventListener("hashchange", initFromHash, {once:true});
+    initFromHash();
+  }
+
+  function initFileUpload(){
+    const input=document.getElementById("imgfile");
+    if(!input) return;
+    input.addEventListener("change", function(){
+      const fileChosen=document.getElementById("file-chosen");
+      if(fileChosen){ fileChosen.textContent=this.files.length?this.files[0].name:"No file selected"; }
+    });
+  }
+
+  function initAuthUI(){
+    const flagEl=document.getElementById("auth-flag");
+    const authRequired = (flagEl?.dataset?.auth || "false").toLowerCase()==="true";
+    ["auth-wrap","auth-wrap2","auth-wrap3","remember-wrap","remember-wrap2","remember-wrap3"].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el){ el.classList.toggle("hidden", !authRequired); }
+    });
+  }
+
+  function initUI(){
+    initTabs();
+    initFileUpload();
+    initAuthUI();
+  }
+
+  function ajaxNavigate(url, addToHistory=true){
+    fetch(url, {headers: {"X-Partial":"true"}})
+      .then(r=>r.text())
+      .then(html=>{
+        const main=document.querySelector("main.wrap");
+        if(main){ main.innerHTML = html; }
+        if(addToHistory){ try{ history.pushState(null,"",url); }catch{} }
+        initUI(); // rebind after content swap
+      })
+      .catch(err=>console.error("Navigation error:", err));
+  }
+
+  document.addEventListener("DOMContentLoaded", ()=>{
+    initUI();
+    document.querySelectorAll("a[data-nav]").forEach(link=>{
+      link.addEventListener("click", e=>{
+        e.preventDefault();
+        ajaxNavigate(link.getAttribute("href"));
+      });
+    });
+    window.addEventListener("popstate", ()=>ajaxNavigate(location.pathname, false));
+  });
+  </script>
 </body>
 </html>
 """
@@ -103,6 +178,9 @@ def html_page(title: str, content: str) -> HTMLResponse:
     return HTMLResponse(HTML_BASE.replace("{title}", title).replace("{content}", content))
 
 HTML_UI = r"""
+<!-- hidden flag read by global JS -->
+<div id="auth-flag" data-auth="{{AUTH_REQUIRED}}" hidden></div>
+
 <div class="tabs" role="tablist" aria-label="Mode">
   <div class="tab" role="tab" id="tab-tpl" aria-controls="pane_tpl" aria-selected="true" tabindex="0">Template</div>
   <div class="tab" role="tab" id="tab-raw" aria-controls="pane_raw" aria-selected="false" tabindex="-1">Raw</div>
@@ -111,12 +189,47 @@ HTML_UI = r"""
 
 <!-- Template -->
 <section id="pane_tpl" class="card" role="tabpanel" aria-labelledby="tab-tpl">
-  ...
+  <form method="post" action="/ui/print/template">
+    <div class="grid">
+      <div>
+        <label for="title">Title</label>
+        <input id="title" type="text" name="title" placeholder="TASKS" value="TASKS">
+        <label for="lines">Lines (one per line)</label>
+        <textarea id="lines" name="lines" placeholder="Buy milk&#10;Pay bills&#10;Write code"></textarea>
+        <label><input type="checkbox" name="add_dt"> Add date/time</label>
+      </div>
+      <div>
+        <div id="auth-wrap" class="row" style="gap:10px">
+          <label for="pass1">UI password</label>
+          <input id="pass1" type="password" name="pass" placeholder="only if required" style="max-width:220px">
+          <label id="remember-wrap"><input type="checkbox" name="remember"> Stay signed in</label>
+        </div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px; gap:12px">
+      <button type="submit">Print</button>
+    </div>
+  </form>
 </section>
 
 <!-- RAW -->
 <section id="pane_raw" class="card" role="tabpanel" aria-labelledby="tab-raw" hidden>
-  ...
+  <form method="post" action="/ui/print/raw">
+    <label for="rawtext">Raw text</label>
+    <textarea id="rawtext" name="text" placeholder="Any text..."></textarea>
+    <label><input type="checkbox" name="add_dt"> Add date/time</label>
+    <div class="row" style="margin-top:12px">
+      <div class="grow"></div>
+      <div id="auth-wrap2" class="row" style="gap:10px">
+        <label for="pass2">UI password</label>
+        <input id="pass2" type="password" name="pass" placeholder="only if required" style="max-width:220px">
+        <label id="remember-wrap2"><input type="checkbox" name="remember"> Stay signed in</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px; gap:12px">
+      <button type="submit">Print</button>
+    </div>
+  </form>
 </section>
 
 <!-- Image -->
@@ -149,72 +262,6 @@ HTML_UI = r"""
     </div>
   </form>
 </section>
-
-<script>
-const tabs=[{id:"tpl",btn:"tab-tpl",pane:"pane_tpl"},{id:"raw",btn:"tab-raw",pane:"pane_raw"},{id:"img",btn:"tab-img",pane:"pane_img"}];
-function selectTab(id){
-  tabs.forEach(t=>{
-    const btn=document.getElementById(t.btn),pane=document.getElementById(t.pane),active=(t.id===id);
-    btn.setAttribute("aria-selected",active?"true":"false");
-    btn.tabIndex=active?0:-1; pane.hidden=!active;
-  });
-  history.replaceState(null,"","#"+id);
-}
-function initFromHash(){
-  const h=(location.hash||"#tpl").slice(1);
-  selectTab(tabs.some(t=>t.id===h)?h:"tpl");
-}
-tabs.forEach(t=>{
-  const el=document.getElementById(t.btn);
-  el.addEventListener("click",()=>selectTab(t.id));
-  el.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); selectTab(t.id); }});
-});
-window.addEventListener("hashchange",initFromHash);
-initFromHash();
-
-// File chosen text update
-document.addEventListener("DOMContentLoaded",()=>{
-  const input=document.getElementById("imgfile");
-  if(input){
-    input.addEventListener("change",function(){
-      const fileChosen=document.getElementById("file-chosen");
-      fileChosen.textContent=this.files.length?this.files[0].name:"No file selected";
-    });
-  }
-});
-
-// Hide password UI if not required
-const AUTH_REQUIRED=String("{{AUTH_REQUIRED}}").toLowerCase().trim()==="true";
-["auth-wrap","auth-wrap2","auth-wrap3"].forEach(id=>{
-  const el=document.getElementById(id);
-  if(el) el.classList.toggle("hidden", !AUTH_REQUIRED);
-});
-["remember-wrap","remember-wrap2","remember-wrap3"].forEach(id=>{
-  const el=document.getElementById(id);
-  if(el) el.classList.toggle("hidden", !AUTH_REQUIRED);
-});
-// SPA-like navigation
-function ajaxNavigate(url, addToHistory=true){
-  fetch(url, {headers: {"X-Partial":"true"}})
-    .then(r=>r.text())
-    .then(html=>{
-      document.querySelector("main.wrap").innerHTML = html;
-      if(addToHistory){ history.pushState(null,"",url); }
-    })
-    .catch(err=>console.error("Navigation error:",err));
-}
-
-document.querySelectorAll("a[data-nav]").forEach(link=>{
-  link.addEventListener("click", e=>{
-    e.preventDefault();
-    ajaxNavigate(link.getAttribute("href"));
-  });
-});
-
-window.addEventListener("popstate", ()=>{
-  ajaxNavigate(location.pathname, false);
-});
-</script>
 """.replace("{w}", str(PRINT_WIDTH_PX))
 
 
@@ -245,7 +292,7 @@ def settings_html_form() -> str:
         </div>
         <div class="row" style="margin-top:12px; gap:12px">
           <button type="submit">Save</button>
-          <a class="link" href="/ui/settings/test">Test print</a>
+          <a class="link" href="/ui/settings/test" data-nav>Test print</a>
         </div>
       </form>
     </section>
@@ -254,4 +301,5 @@ def settings_html_form() -> str:
 
 
 def guest_ui_html(auth_required_flag: str) -> str:
+    # Reuse main UI for guests (server replaces form actions)
     return HTML_UI.replace("{{AUTH_REQUIRED}}", auth_required_flag)
