@@ -7,4 +7,4 @@ COPY . .
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-CMD ["python", "main.py"]  # Change 'main.py' to your actual entrypoint if needed
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
