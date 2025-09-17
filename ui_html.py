@@ -117,12 +117,45 @@ HTML_UI = r"""
 
 <!-- Template -->
 <section id="pane_tpl" class="card" role="tabpanel" aria-labelledby="tab-tpl">
-  ...
+  <form method="post" action="/ui/print/template">
+    <label for="title">Title</label>
+    <input id="title" type="text" name="title" placeholder="Tasks">
+
+    <label for="lines">Lines (one per line)</label>
+    <textarea id="lines" name="lines" placeholder="Buy milk&#10;Pay bills&#10;Write code"></textarea>
+
+    <label><input type="checkbox" name="add_dt"> Add date/time</label>
+
+    <div id="auth-wrap" class="row" style="margin-top:14px; gap:10px">
+      <label for="pass">UI password</label>
+      <input id="pass" type="password" name="pass" placeholder="only if required" style="max-width:220px">
+      <label id="remember-wrap"><input type="checkbox" name="remember"> Stay signed in</label>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit">Print</button>
+    </div>
+  </form>
 </section>
 
-<!-- RAW -->
+<!-- Raw -->
 <section id="pane_raw" class="card" role="tabpanel" aria-labelledby="tab-raw" hidden>
-  ...
+  <form method="post" action="/ui/print/raw">
+    <label for="text">Raw text</label>
+    <textarea id="text" name="text" placeholder="Any text..."></textarea>
+
+    <label><input type="checkbox" name="add_dt"> Add date/time</label>
+
+    <div id="auth-wrap2" class="row" style="margin-top:14px; gap:10px">
+      <label for="pass2">UI password</label>
+      <input id="pass2" type="password" name="pass" placeholder="only if required" style="max-width:220px">
+      <label id="remember-wrap2"><input type="checkbox" name="remember"> Stay signed in</label>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit">Print</button>
+    </div>
+  </form>
 </section>
 
 <!-- Image -->
@@ -142,15 +175,12 @@ HTML_UI = r"""
         <input id="img_subtitle" type="text" name="img_subtitle" placeholder="Subtitle">
       </div>
     </div>
-    <div class="row" style="margin-top:14px">
-      <div class="grow"></div>
-      <div id="auth-wrap3" class="row" style="gap:10px">
-        <label for="pass3">UI password</label>
-        <input id="pass3" type="password" name="pass" placeholder="only if required" style="max-width:220px">
-        <label id="remember-wrap3"><input type="checkbox" name="remember"> Stay signed in</label>
-      </div>
+    <div id="auth-wrap3" class="row" style="margin-top:14px; gap:10px">
+      <label for="pass3">UI password</label>
+      <input id="pass3" type="password" name="pass" placeholder="only if required" style="max-width:220px">
+      <label id="remember-wrap3"><input type="checkbox" name="remember"> Stay signed in</label>
     </div>
-    <div class="row" style="margin-top:16px; gap:12px; justify-content:flex-end">
+    <div class="form-actions">
       <button type="submit">Print</button>
     </div>
   </form>
