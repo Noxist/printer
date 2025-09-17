@@ -28,8 +28,8 @@ from logic import (
     _save_settings,
     GUESTS,
     guest_consume_or_error,
-    _guest_check_len_ok,   # Zeichenlimit-Helper
-    GUEST_MAX_CHARS,       # fuer Hinweis im UI
+    _guest_check_len_ok,
+    GUEST_MAX_CHARS,
 )
 
 from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
@@ -39,7 +39,6 @@ app = FastAPI(title="Printer API")
 
 @app.on_event("startup")
 async def _start_queue_worker():
-    # Hintergrund-Worker, der Queue-Jobs zum Drucker schiebt (mit Retry)
     start_background_flusher()
 
 app.add_middleware(
@@ -49,10 +48,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Modularer Quellen-Router (z. B. /api/print/source/dadjoke, /api/print/source/bom)
+# Modularer Quellen-Router
 app.include_router(sources_router)
-
-# ------------------------------------------------------------------------------
 
 PRINT_WIDTH_PX = int(cfg_get("PRINT_WIDTH_PX", 576))
 
@@ -131,6 +128,9 @@ async def api_print_image(
 def ui(request: Request):
     auth_required = "false" if require_ui_auth(request) else ("true" if cfg_get("UI_PASS") else "false")
     html = HTML_UI.replace("{{AUTH_REQUIRED}}", auth_required)
+
+    if request.headers.get("X-Partial") == "true":
+        return HTMLResponse(html)
     return html_page("Receipt Printer", html)
 
 @app.get("/ui/logout")
@@ -238,6 +238,9 @@ def guest_ui(token: str, request: Request):
     content = content.replace('/ui/print/template', f'/guest/{token}/print/template')
     content = content.replace('/ui/print/raw', f'/guest/{token}/print/raw')
     content = content.replace('/ui/print/image', f'/guest/{token}/print/image')
+
+    if request.headers.get("X-Partial") == "true":
+        return HTMLResponse(content)
     return html_page("Guest print", content)
 
 @app.post("/guest/{token}/print/template")
@@ -247,7 +250,6 @@ async def guest_print_template(
     lines: str = Form(""),
     add_dt: bool = Form(False),
 ):
-    # --- Zeichenlimit prüfen (Titel + Zeilen + evtl. Datum) ---
     txt_full = (title or "").strip() + "\n" + (lines or "")
     if add_dt:
         txt_full += f"\n{now_str('%Y-%m-%d %H:%M')}"
@@ -255,7 +257,6 @@ async def guest_print_template(
     if not ok:
         return html_page("Guest print", msg)
 
-    # Token erst konsumieren, wenn Länge ok ist
     tok = guest_consume_or_error(token)
     if not tok:
         return html_page("Guest print", "<div class='card'>Limit reached or invalid link.</div>")
@@ -279,7 +280,6 @@ async def guest_print_raw(
     text: str = Form(""),
     add_dt: bool = Form(False),
 ):
-    # --- Zeichenlimit prüfen (Text + evtl. Datum) ---
     full = (text or "")
     if add_dt:
         full += f"\n{now_str('%Y-%m-%d %H:%M')}"
@@ -287,7 +287,6 @@ async def guest_print_raw(
     if not ok:
         return html_page("Guest print", msg)
 
-    # Token erst konsumieren, wenn Länge ok ist
     tok = guest_consume_or_error(token)
     if not tok:
         return html_page("Guest print", "<div class='card'>Limit reached or invalid link.</div>")
@@ -328,8 +327,12 @@ async def guest_print_image(
 @app.get("/ui/settings", response_class=HTMLResponse)
 def ui_settings(request: Request):
     if not require_ui_auth(request):
-        return html_page("Settings", "<div class='card'>Not signed in.</div>")
-    content = "<h3 class='title'>Settings</h3>" + settings_html_form()
+        content = "<div class='card'>Not signed in.</div>"
+    else:
+        content = "<h3 class='title'>Settings</h3>" + settings_html_form()
+
+    if request.headers.get("X-Partial") == "true":
+        return HTMLResponse(content)
     return html_page("Settings", content)
 
 @app.post("/ui/settings/save", response_class=HTMLResponse)
@@ -360,26 +363,13 @@ def ui_settings_test(request: Request):
     if not require_ui_auth(request):
         return html_page("Settings", "<div class='card'>Not signed in.</div>")
     cfg = ReceiptCfg()
-    sample_lines = [
-        "Read - 10 Min",
-        "Drink water",
-        "Plan – 10 Min",
-        "Exercise – 20 Min"
-    ]
+    sample_lines = ["Read - 10 Min", "Drink water", "Plan – 10 Min", "Exercise – 20 Min"]
     img = render_receipt("TEST", sample_lines, add_time=True, width_px=PRINT_WIDTH_PX, cfg=cfg)
     b64 = pil_to_base64_png(img)
     mqtt_publish_image_base64(b64, cut_paper=1)
     return html_page("Settings", "<div class='card'>Testdruck gesendet.</div>")
 
-# ------------------------------- Debug ----------------------------------------
-@app.get("/debug/last")
-async def debug_last():
-    path = "/tmp/last_print.png"
-    if os.path.exists(path):
-        return FileResponse(path, media_type="image/png")
-    return {"error": "no debug file found"}
-
-# --- Helper: sauberes Base-URL hinter Proxy/Render ----------------------------
+# ------------------------------- Guest Admin UI -------------------------------
 def _base_url(request: Request) -> str:
     proto = request.headers.get("x-forwarded-proto") or request.url.scheme
     host  = request.headers.get("x-forwarded-host")  or request.headers.get("host") or request.url.netloc
@@ -410,7 +400,6 @@ def _render_guests_admin(request: Request) -> str:
         quota  = info.get("quota_per_day", 5)
         link   = _guest_link(token, request)
         rid    = f"lnk_{token[:8]}"
-
         row = f"""
         <tr>
           <td style="max-width:0">
@@ -470,8 +459,13 @@ def _render_guests_admin(request: Request) -> str:
 @app.get("/ui/guests", response_class=HTMLResponse)
 def ui_guests(request: Request):
     if not require_ui_auth(request):
-        return html_page("Guest", "<div class='card'>Not signed in.</div>")
-    return html_page("Guest", _render_guests_admin(request))
+        content = "<div class='card'>Not signed in.</div>"
+    else:
+        content = _render_guests_admin(request)
+
+    if request.headers.get("X-Partial") == "true":
+        return HTMLResponse(content)
+    return html_page("Guest", content)
 
 @app.post("/ui/guests/create", response_class=HTMLResponse)
 async def ui_guests_create(request: Request):
@@ -494,3 +488,11 @@ async def ui_guests_revoke(request: Request):
     ok   = GUESTS.revoke(tok)
     msg  = "<div class='card'>Token deactivated.</div>" if ok else "<div class='card'>Token nicht gefunden.</div>"
     return html_page("Guest", msg + _render_guests_admin(request))
+
+# ------------------------------- Debug ----------------------------------------
+@app.get("/debug/last")
+async def debug_last():
+    path = "/tmp/last_print.png"
+    if os.path.exists(path):
+        return FileResponse(path, media_type="image/png")
+    return {"error": "no debug file found"}
