@@ -60,6 +60,23 @@ HTML_BASE = r"""
   button.secondary{background:transparent; color:var(--text); border:1px solid var(--line); box-shadow:none}
   .hidden{display:none !important}
   .nav a{margin-left:12px}
+
+  /* Custom file upload */
+  .file-btn {
+    display:inline-block;
+    background:linear-gradient(135deg, var(--accent), var(--accent-2));
+    color:#0b1220;
+    padding:10px 16px;
+    border-radius:12px;
+    font-weight:600;
+    cursor:pointer;
+    box-shadow:0 6px 14px rgba(125,211,252,.25);
+  }
+  #file-chosen {
+    margin-left:10px;
+    color:var(--muted);
+    font-size:.9rem;
+  }
 </style>
 <body>
   <header class="top">
@@ -67,10 +84,10 @@ HTML_BASE = r"""
       <div class="title">Receipt Printer</div>
       <div class="spacer"></div>
       <nav class="nav">
-        <a class="link" href="/ui">Print</a>
-        <a class="link" href="/ui/guests">Guests</a>
-        <a class="link" href="/ui/settings">Settings</a>
-        <a class="link" href="/ui/logout" title="Logout">Logout</a>
+          <a class="link" href="/ui" data-nav>Print</a>
+          <a class="link" href="/ui/guests" data-nav>Guests</a>
+          <a class="link" href="/ui/settings" data-nav>Settings</a>
+          <a class="link" href="/ui/logout" title="Logout">Logout</a>
       </nav>
     </div>
   </header>
@@ -94,52 +111,12 @@ HTML_UI = r"""
 
 <!-- Template -->
 <section id="pane_tpl" class="card" role="tabpanel" aria-labelledby="tab-tpl">
-  <form method="post" action="/ui/print/template">
-    <div class="grid">
-      <div>
-        <label for="title">Title</label>
-        <input id="title" type="text" name="title" value="TOMORROW" autocomplete="off">
-      </div>
-      <div>
-        <label for="lines">Lines (one per line)</label>
-        <textarea id="lines" name="lines" placeholder="Read scripture — 10 min&#10;Drink water"></textarea>
-      </div>
-    </div>
-    <div class="row" style="margin-top:12px">
-      <label><input type="checkbox" name="add_dt" checked> Append date/time automatically</label>
-      <div class="grow"></div>
-      <div id="auth-wrap" class="row" style="gap:10px">
-        <label for="pass">UI password</label>
-        <input id="pass" type="password" name="pass" placeholder="only if required" style="max-width:220px">
-        <label id="remember-wrap"><input type="checkbox" name="remember"> Stay signed in</label>
-      </div>
-    </div>
-    <div class="row" style="margin-top:12px; gap:12px">
-      <button type="submit">Print</button>
-    </div>
-  </form>
+  ...
 </section>
 
 <!-- RAW -->
 <section id="pane_raw" class="card" role="tabpanel" aria-labelledby="tab-raw" hidden>
-  <form method="post" action="/ui/print/raw">
-    <div>
-      <label for="rawtext">Raw text</label>
-      <textarea id="rawtext" name="text" placeholder="Type text here"></textarea>
-    </div>
-    <div class="row" style="margin-top:12px">
-      <label><input type="checkbox" name="add_dt"> Append date/time automatically</label>
-      <div class="grow"></div>
-      <div id="auth-wrap2" class="row" style="gap:10px">
-        <label for="pass2">UI password</label>
-        <input id="pass2" type="password" name="pass" placeholder="only if required" style="max-width:220px">
-        <label id="remember-wrap2"><input type="checkbox" name="remember"> Stay signed in</label>
-      </div>
-    </div>
-    <div class="row" style="margin-top:12px; gap:12px">
-      <button type="submit">Print</button>
-    </div>
-  </form>
+  ...
 </section>
 
 <!-- Image -->
@@ -147,8 +124,10 @@ HTML_UI = r"""
   <form method="post" action="/ui/print/image" enctype="multipart/form-data">
     <div class="grid">
       <div>
-        <label for="imgfile">Image file</label>
-        <input id="imgfile" type="file" name="file" accept="image/*" required>
+        <label for="imgfile">Upload Image</label>
+        <input id="imgfile" type="file" name="file" accept="image/*" required hidden>
+        <label for="imgfile" class="file-btn">Choose File</label>
+        <span id="file-chosen">No file selected</span>
       </div>
       <div>
         <label for="img_title" style="margin-top:0">Title (optional)</label>
@@ -193,6 +172,17 @@ tabs.forEach(t=>{
 window.addEventListener("hashchange",initFromHash);
 initFromHash();
 
+// File chosen text update
+document.addEventListener("DOMContentLoaded",()=>{
+  const input=document.getElementById("imgfile");
+  if(input){
+    input.addEventListener("change",function(){
+      const fileChosen=document.getElementById("file-chosen");
+      fileChosen.textContent=this.files.length?this.files[0].name:"No file selected";
+    });
+  }
+});
+
 // Hide password UI if not required
 const AUTH_REQUIRED=String("{{AUTH_REQUIRED}}").toLowerCase().trim()==="true";
 ["auth-wrap","auth-wrap2","auth-wrap3"].forEach(id=>{
@@ -202,6 +192,27 @@ const AUTH_REQUIRED=String("{{AUTH_REQUIRED}}").toLowerCase().trim()==="true";
 ["remember-wrap","remember-wrap2","remember-wrap3"].forEach(id=>{
   const el=document.getElementById(id);
   if(el) el.classList.toggle("hidden", !AUTH_REQUIRED);
+});
+// SPA-like navigation
+function ajaxNavigate(url, addToHistory=true){
+  fetch(url, {headers: {"X-Partial":"true"}})
+    .then(r=>r.text())
+    .then(html=>{
+      document.querySelector("main.wrap").innerHTML = html;
+      if(addToHistory){ history.pushState(null,"",url); }
+    })
+    .catch(err=>console.error("Navigation error:",err));
+}
+
+document.querySelectorAll("a[data-nav]").forEach(link=>{
+  link.addEventListener("click", e=>{
+    e.preventDefault();
+    ajaxNavigate(link.getAttribute("href"));
+  });
+});
+
+window.addEventListener("popstate", ()=>{
+  ajaxNavigate(location.pathname, false);
 });
 </script>
 """.replace("{w}", str(PRINT_WIDTH_PX))
