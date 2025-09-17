@@ -8,80 +8,84 @@ HTML_BASE = r"""
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{title}</title>
 <style>
-  :root {
-    --bg:#0b0f14; --card:#121821; --muted:#98a2b3; --text:#e6edf3; --line:#1e2a38;
-    --accent:#7dd3fc; --accent-2:#a78bfa; --err:#ef4444; --radius:18px; --shadow:0 6px 30px rgba(0,0,0,.35);
+  :root{
+    --bg:#f5f7fa; --card:#ffffff; --muted:#475467; --text:#0b1220; --line:#e7eaf0;
+    --accent:#3b82f6; --accent-2:#8b5cf6; --err:#ef4444; --radius:18px;
+    --shadow:0 4px 24px rgba(0,0,0,.12);
   }
-  @media (prefers-color-scheme: light){
-    :root {
-      --bg:#f2f4f8; --card:#ffffff; --text:#0b1220; --muted:#475467; --line:#d9dce3;
-      --shadow:0 4px 20px rgba(0,0,0,.08);
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0b0f14; --card:#121821; --muted:#98a2b3; --text:#e6edf3; --line:#1e2a38;
+      --shadow:0 6px 26px rgba(0,0,0,.35);
     }
   }
-  *{box-sizing:border-box}
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   html,body{height:100%}
   body{
-    margin:0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Segoe UI, Roboto, Helvetica Neue, Arial;
-    color:var(--text);
+    margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    color:var(--text); line-height:1.4;
     background:
-      radial-gradient(1200px 600px at 20% -10%, rgba(125,211,252,.18), transparent 70%),
-      radial-gradient(900px 500px at 110% 10%, rgba(167,139,250,.16), transparent 70%),
+      radial-gradient(1200px 800px at 20% -10%, rgba(59,130,246,.15), transparent 70%),
+      radial-gradient(1000px 600px at 120% 10%, rgba(139,92,246,.12), transparent 70%),
       var(--bg);
-    line-height:1.45;
+    min-height:100vh;
+    display:flex; flex-direction:column;
   }
-  .wrap{max-width:940px; margin:0 auto; padding:clamp(16px,2.5vw,28px)}
+  .wrap{max-width:920px; margin:0 auto; padding:clamp(16px,3vw,28px); flex:1; width:100%}
   header.top{position:sticky; top:0; backdrop-filter:saturate(1.2) blur(10px);
-             background:color-mix(in srgb, var(--bg) 80%, transparent); border-bottom:1px solid var(--line); z-index:5}
-  .top-inner{display:flex; align-items:center; gap:14px; padding:14px clamp(14px,2vw,24px)}
-  .title{font-weight:700; letter-spacing:.2px; font-size:1.2rem}
+    background:color-mix(in srgb, var(--bg) 80%, transparent); border-bottom:1px solid var(--line); z-index:10}
+  .top-inner{display:flex; align-items:center; gap:14px; padding:12px clamp(12px,3vw,24px)}
+  .title{font-weight:700; font-size:1.1rem; letter-spacing:.2px}
   .spacer{flex:1}
-  .link{color:var(--muted); text-decoration:none; font-size:.95rem; transition:.2s}
+  .link{color:var(--muted); text-decoration:none; font-size:.95rem; margin-left:16px}
   .link:hover{color:var(--text); text-decoration:underline}
   .card{border:1px solid var(--line); background:color-mix(in srgb, var(--card) 95%, transparent);
         border-radius:var(--radius); box-shadow:var(--shadow);
-        padding:clamp(16px,2.5vw,22px); margin:16px 0 22px; transition:.3s}
-  .card:hover{box-shadow:0 6px 30px rgba(0,0,0,.12)}
-  .grid{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+        padding:clamp(16px,2.8vw,22px); margin:14px 0 22px; width:100%}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px}
   @media (max-width:760px){ .grid{grid-template-columns:1fr} }
-  .tabs{display:flex; gap:10px; flex-wrap:wrap; padding:14px 0 10px}
-  .tab{border:1px solid var(--line); border-radius:999px; padding:9px 16px; cursor:pointer; user-select:none;
-       background:color-mix(in srgb, var(--card) 90%, transparent); font-weight:600; font-size:.95rem;
-       transition:all .15s ease}
-  .tab[aria-selected="true"]{background:linear-gradient(135deg, var(--accent), var(--accent-2));
-       color:#0b1220; border-color:transparent; box-shadow:0 4px 12px rgba(125,211,252,.35)}
+  .tabs{display:flex; flex-wrap:wrap; gap:10px; padding:18px 0 10px}
+  .tab{border:1px solid var(--line); border-radius:999px; padding:9px 18px; cursor:pointer;
+       background:var(--card); font-weight:600; font-size:.95rem; user-select:none;
+       transition:all .2s ease; box-shadow:0 2px 6px rgba(0,0,0,.04);}
+  .tab[aria-selected="true"]{
+       background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff;
+       border-color:transparent; box-shadow:0 4px 14px rgba(59,130,246,.35);}
   .row{display:flex; flex-wrap:wrap; align-items:center; gap:12px}
   .grow{flex:1 1 auto}
-  label{font-weight:600; color:var(--muted); display:block; margin:8px 0 6px}
+  label{font-weight:600; color:var(--muted); display:block; margin:10px 0 6px}
   textarea, input[type=text], input[type=password], input[type=file], input[type=number], select{
     width:100%; border:1px solid var(--line); background:transparent; color:var(--text);
-    padding:12px; border-radius:12px; outline:none; transition:border-color .15s, box-shadow .15s
+    padding:12px 14px; border-radius:12px; outline:none; transition:border-color .15s, box-shadow .15s
   }
   textarea{min-height:140px; resize:vertical}
   input:focus, textarea:focus, select:focus{
-    border-color:color-mix(in srgb, var(--accent) 55%, var(--line));
+    border-color:var(--accent);
     box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent)
   }
   button{
-    appearance:none; border:none; cursor:pointer; font-weight:700; padding:12px 20px; border-radius:12px;
-    background:linear-gradient(135deg, var(--accent), var(--accent-2)); color:#0b1220;
-    box-shadow:0 6px 16px rgba(125,211,252,.25); transition:.2s;
+    appearance:none; border:none; cursor:pointer; font-weight:700;
+    padding:13px 22px; border-radius:12px;
+    background:linear-gradient(135deg, var(--accent), var(--accent-2)); color:#fff;
+    box-shadow:0 6px 18px rgba(59,130,246,.25);
+    transition:transform .15s ease, box-shadow .15s ease;
   }
-  button:hover{transform:translateY(-1px); box-shadow:0 8px 20px rgba(125,211,252,.35)}
-  button:active{transform:translateY(0); box-shadow:0 4px 10px rgba(125,211,252,.25)}
+  button:hover{transform:translateY(-1px); box-shadow:0 8px 20px rgba(59,130,246,.3);}
   button.secondary{background:transparent; color:var(--text); border:1px solid var(--line); box-shadow:none}
   .hidden{display:none !important}
-  .nav a{margin-left:14px}
-  .file-btn {
-    display:inline-block;
-    background:linear-gradient(135deg, var(--accent), var(--accent-2));
-    color:#0b1220;
-    padding:11px 18px;
-    border-radius:12px;
-    font-weight:600;
-    cursor:pointer;
-    box-shadow:0 6px 14px rgba(125,211,252,.25);
+
+  /* File upload button */
+  .file-btn{display:inline-block; background:linear-gradient(135deg, var(--accent), var(--accent-2));
+    color:#fff; padding:11px 18px; border-radius:12px; font-weight:600; cursor:pointer;
+    box-shadow:0 6px 14px rgba(59,130,246,.25);}
+  #file-chosen{margin-left:10px; color:var(--muted); font-size:.9rem}
+
+  /* Responsive button placement */
+  .form-actions{display:flex; justify-content:flex-end; margin-top:18px}
+  @media (max-width:760px){
+    .form-actions{justify-content:center}
+    .form-actions button{width:100%; max-width:320px}
   }
-  #file-chosen { margin-left:10px; color:var(--muted); font-size:.9rem; }
 </style>
 <body>
   <header class="top">
@@ -89,17 +93,14 @@ HTML_BASE = r"""
       <div class="title">Receipt Printer</div>
       <div class="spacer"></div>
       <nav class="nav">
-          <a class="link" href="/ui" data-nav>Print</a>
-          <a class="link" href="/ui/guests" data-nav>Guests</a>
-          <a class="link" href="/ui/settings" data-nav>Settings</a>
-          <a class="link" href="/ui/logout" title="Logout">Logout</a>
+        <a class="link" href="/ui" data-nav>Print</a>
+        <a class="link" href="/ui/guests" data-nav>Guests</a>
+        <a class="link" href="/ui/settings" data-nav>Settings</a>
+        <a class="link" href="/ui/logout" title="Logout">Logout</a>
       </nav>
     </div>
   </header>
-
-  <main class="wrap">
-    {content}
-  </main>
+  <main class="wrap">{content}</main>
 </body>
 </html>
 """
