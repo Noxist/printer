@@ -1,8 +1,5 @@
 app = "printer"     # You can change 'printer' to your Fly.io app name
 
-[build]
-  dockerfile = "Dockerfile"
-
 [env]
   PORT = "8080"
 
