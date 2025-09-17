@@ -36,7 +36,6 @@ HTML_BASE = r"""
   .card{border:1px solid var(--line); background:color-mix(in srgb, var(--card) 92%, transparent); border-radius:var(--radius); box-shadow:var(--shadow);
         padding:clamp(14px,2.5vw,20px); margin:12px 0 18px}
   .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
-  @media (max-width:760px){ .grid{grid-template-columns:1fr} }
   .tabs{display:flex; gap:8px; flex-wrap:wrap; padding:14px 0 8px}
   .tab{border:1px solid var(--line); border-radius:999px; padding:8px 14px; cursor:pointer; user-select:none;
        background:color-mix(in srgb, var(--card) 85%, transparent); font-weight:600; font-size:.95rem;
@@ -77,6 +76,16 @@ HTML_BASE = r"""
     color:var(--muted);
     font-size:.9rem;
   }
+
+  /* Responsive fixes */
+  @media (max-width:760px){
+    .grid { grid-template-columns:1fr; }
+    .top-inner { flex-direction:column; align-items:flex-start; gap:6px; }
+    .nav { display:flex; flex-wrap:wrap; gap:10px; }
+    .tabs { flex-wrap:wrap; }
+    .tab { flex:1 1 auto; text-align:center; }
+    button { width:100%; }
+  }
 </style>
 <body>
   <header class="top">
@@ -97,7 +106,7 @@ HTML_BASE = r"""
   </main>
 
   <script>
-  // ---- SPA-like nav + re-init after partial loads ----
+  // Re-init after partial loads
   function initTabs(){
     const tabs=[{id:"tpl",btn:"tab-tpl",pane:"pane_tpl"},{id:"raw",btn:"tab-raw",pane:"pane_raw"},{id:"img",btn:"tab-img",pane:"pane_img"}];
     function selectTab(id){
@@ -113,13 +122,14 @@ HTML_BASE = r"""
       const known=["tpl","raw","img"];
       selectTab(known.includes(h)?h:"tpl");
     }
-    const btns=[..."tab-tpl,tab-raw,tab-img".split(",")].map(id=>document.getElementById(id)).filter(Boolean);
-    btns.forEach((el, idx)=>{
-      const id=["tpl","raw","img"][idx];
-      el.onclick=()=>selectTab(id);
-      el.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); selectTab(id); } };
+    ["tab-tpl","tab-raw","tab-img"].forEach((id, idx)=>{
+      const el=document.getElementById(id);
+      if(el){
+        const tid=["tpl","raw","img"][idx];
+        el.onclick=()=>selectTab(tid);
+        el.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); selectTab(tid); } };
+      }
     });
-    window.addEventListener("hashchange", initFromHash, {once:true});
     initFromHash();
   }
 
@@ -154,7 +164,7 @@ HTML_BASE = r"""
         const main=document.querySelector("main.wrap");
         if(main){ main.innerHTML = html; }
         if(addToHistory){ try{ history.pushState(null,"",url); }catch{} }
-        initUI(); // rebind after content swap
+        initUI();
       })
       .catch(err=>console.error("Navigation error:", err));
   }
@@ -178,7 +188,6 @@ def html_page(title: str, content: str) -> HTMLResponse:
     return HTMLResponse(HTML_BASE.replace("{title}", title).replace("{content}", content))
 
 HTML_UI = r"""
-<!-- hidden flag read by global JS -->
 <div id="auth-flag" data-auth="{{AUTH_REQUIRED}}" hidden></div>
 
 <div class="tabs" role="tablist" aria-label="Mode">
@@ -301,5 +310,4 @@ def settings_html_form() -> str:
 
 
 def guest_ui_html(auth_required_flag: str) -> str:
-    # Reuse main UI for guests (server replaces form actions)
     return HTML_UI.replace("{{AUTH_REQUIRED}}", auth_required_flag)
