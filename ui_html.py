@@ -86,6 +86,11 @@ HTML_BASE = r"""
     .form-actions{justify-content:center}
     .form-actions button{width:100%; max-width:320px}
   }
+  /* Remove ugly blue focus ring from checkboxes */
+  input[type="checkbox"]:focus {
+    outline: none;
+    box-shadow: none;
+  }
 </style>
 <body>
   <header class="top">
