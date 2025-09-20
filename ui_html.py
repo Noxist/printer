@@ -98,7 +98,6 @@ HTML_BASE = r"""
       <div class="title">Receipt Printer</div>
       <div class="spacer"></div>
       <nav class="nav" id="main-nav">
-        <a class="link" href="/ui" data-nav>Print</a>
         <a class="link guest-hide" href="/ui/guests" data-nav>Guests</a>
         <a class="link guest-hide" href="/ui/settings" data-nav>Settings</a>
         <a class="link guest-hide" href="/ui/logout" title="Logout">Logout</a>
@@ -250,20 +249,20 @@ if(dropZone){
     e.preventDefault(); dropZone.style.background="";
   }));
   dropZone.addEventListener("drop",e=>{
-    e.preventDefault();
-    if(e.dataTransfer.files.length){
-      hiddenFile.files = e.dataTransfer.files;
-      dropZone.textContent = "Selected: " + e.dataTransfer.files[0].name;
-      dropZone.closest("form").submit();
-    }
-  });
-  hiddenFile.addEventListener("change",()=>{
-    if(hiddenFile.files.length){
-      dropZone.textContent = "Selected: " + hiddenFile.files[0].name;
-      dropZone.closest("form").submit();
-    }
-  });
-}
+  e.preventDefault();
+  if(e.dataTransfer.files.length){
+    hiddenFile.files = e.dataTransfer.files;
+    dropZone.textContent = "Selected: " + e.dataTransfer.files[0].name;
+    // no auto-submit, wait for user to click "Print"
+  }
+});
+
+hiddenFile.addEventListener("change",()=>{
+  if(hiddenFile.files.length){
+    dropZone.textContent = "Selected: " + hiddenFile.files[0].name;
+    // no auto-submit
+  }
+});
 
 // Hide Guests/Settings if guest UI
 if(location.pathname.startsWith("/guest/")){
