@@ -86,11 +86,7 @@ HTML_BASE = r"""
     .form-actions{justify-content:center}
     .form-actions button{width:100%; max-width:320px}
   }
-  /* Remove ugly blue focus ring from checkboxes */
-  input[type="checkbox"]:focus {
-    outline: none;
-    box-shadow: none;
-  }
+  input[type="checkbox"]:focus {outline: none; box-shadow: none;}
 </style>
 <body>
   <header class="top">
@@ -100,7 +96,7 @@ HTML_BASE = r"""
       <nav class="nav" id="main-nav">
         <a class="link guest-hide" href="/ui/guests" data-nav>Guests</a>
         <a class="link guest-hide" href="/ui/settings" data-nav>Settings</a>
-        <a class="link guest-hide" href="/ui/logout" title="Logout">Logout</a>
+        <a class="link" id="logout-link" href="/ui/logout" title="Logout">Logout</a>
       </nav>
     </div>
   </header>
@@ -249,26 +245,25 @@ if(dropZone){
     e.preventDefault(); dropZone.style.background="";
   }));
   dropZone.addEventListener("drop",e=>{
-  e.preventDefault();
-  if(e.dataTransfer.files.length){
-    hiddenFile.files = e.dataTransfer.files;
-    dropZone.textContent = "Selected: " + e.dataTransfer.files[0].name;
-    // no auto-submit, wait for user to click "Print"
-  }
-});
-
-hiddenFile.addEventListener("change",()=>{
-  if(hiddenFile.files.length){
-    dropZone.textContent = "Selected: " + hiddenFile.files[0].name;
-    // no auto-submit
-  }
-});
+    e.preventDefault();
+    if(e.dataTransfer.files.length){
+      hiddenFile.files = e.dataTransfer.files;
+      dropZone.textContent = "Selected: " + e.dataTransfer.files[0].name;
+      // wait for user to click Print
+    }
+  });
+  hiddenFile.addEventListener("change",()=>{
+    if(hiddenFile.files.length){
+      dropZone.textContent = "Selected: " + hiddenFile.files[0].name;
+      // wait for user to click Print
+    }
+  });
+}
 
 // Hide Guests/Settings if guest UI
 if(location.pathname.startsWith("/guest/")){
   document.querySelectorAll(".guest-hide").forEach(el=>el.style.display="none");
 }
-
 </script>
 """.replace("{w}", str(PRINT_WIDTH_PX))
 
