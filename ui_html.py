@@ -97,11 +97,11 @@ HTML_BASE = r"""
     <div class="top-inner wrap">
       <div class="title">Receipt Printer</div>
       <div class="spacer"></div>
-      <nav class="nav">
+      <nav class="nav" id="main-nav">
         <a class="link" href="/ui" data-nav>Print</a>
-        <a class="link" href="/ui/guests" data-nav>Guests</a>
-        <a class="link" href="/ui/settings" data-nav>Settings</a>
-        <a class="link" href="/ui/logout" title="Logout">Logout</a>
+        <a class="link guest-hide" href="/ui/guests" data-nav>Guests</a>
+        <a class="link guest-hide" href="/ui/settings" data-nav>Settings</a>
+        <a class="link guest-hide" href="/ui/logout" title="Logout">Logout</a>
       </nav>
     </div>
   </header>
@@ -188,6 +188,11 @@ HTML_UI = r"""
     <div class="form-actions">
       <button type="submit">Print</button>
     </div>
+    <div id="drop-zone" style="margin-top:16px; padding:30px; border:2px dashed var(--line); text-align:center; border-radius:12px; color:var(--muted); cursor:pointer">
+      Drag & Drop Image Here
+    </div>
+    <input id="imgfile" type="file" name="file" accept="image/*" hidden>
+
   </form>
 </section>
 
@@ -237,6 +242,36 @@ const AUTH_REQUIRED=String("{{AUTH_REQUIRED}}").toLowerCase().trim()==="true";
 </script>
 """.replace("{w}", str(PRINT_WIDTH_PX))
 
+// --- Drag & Drop Upload ---
+const dropZone = document.getElementById("drop-zone");
+if(dropZone){
+  const hiddenFile = document.getElementById("hidden-file-input");
+  dropZone.addEventListener("click", ()=>hiddenFile.click());
+  ["dragenter","dragover"].forEach(ev=>dropZone.addEventListener(ev,e=>{
+    e.preventDefault(); dropZone.style.background="rgba(59,130,246,0.08)";
+  }));HTML_BASE
+  ["dragleave","drop"].forEach(ev=>dropZone.addEventListener(ev,e=>{
+    e.preventDefault(); dropZone.style.background="";
+  }));
+  dropZone.addEventListener("drop",e=>{
+    e.preventDefault();
+    if(e.dataTransfer.files.length){
+      hiddenFile.files = e.dataTransfer.files;
+      dropZone.textContent = "Selected: " + e.dataTransfer.files[0].name;
+      dropZone.closest("form").submit();
+    }
+  });
+  hiddenFile.addEventListener("change",()=>{
+    if(hiddenFile.files.length){
+      dropZone.textContent = "Selected: " + hiddenFile.files[0].name;
+      dropZone.closest("form").submit();
+    }
+  });
+}
+// Hide Guests/Settings if guest UI
+if(location.pathname.startsWith("/guest/")){
+  document.querySelectorAll(".guest-hide").forEach(el=>el.style.display="none");
+}
 
 def settings_html_form() -> str:
     from logic import settings_effective, SET_KEYS
