@@ -169,7 +169,7 @@ HTML_UI = r"""
     <div class="grid">
       <div>
         <label for="imgfile">Upload Image</label>
-        <input id="imgfile" type="file" name="file" accept="image/*" required hidden>
+        <input id="imgfile" type="file" name="file" accept="image/*" hidden>
         <label for="imgfile" class="file-btn">Choose File</label>
         <span id="file-chosen">No file selected</span>
       </div>
@@ -191,8 +191,6 @@ HTML_UI = r"""
     <div id="drop-zone" style="margin-top:16px; padding:30px; border:2px dashed var(--line); text-align:center; border-radius:12px; color:var(--muted); cursor:pointer">
       Drag & Drop Image Here
     </div>
-    <input id="imgfile" type="file" name="file" accept="image/*" hidden>
-
   </form>
 </section>
 
@@ -239,17 +237,15 @@ const AUTH_REQUIRED=String("{{AUTH_REQUIRED}}").toLowerCase().trim()==="true";
   const el=document.getElementById(id);
   if(el) el.classList.toggle("hidden", !AUTH_REQUIRED);
 });
-</script>
-""".replace("{w}", str(PRINT_WIDTH_PX))
 
 // --- Drag & Drop Upload ---
 const dropZone = document.getElementById("drop-zone");
 if(dropZone){
-  const hiddenFile = document.getElementById("hidden-file-input");
+  const hiddenFile = document.getElementById("imgfile");
   dropZone.addEventListener("click", ()=>hiddenFile.click());
   ["dragenter","dragover"].forEach(ev=>dropZone.addEventListener(ev,e=>{
     e.preventDefault(); dropZone.style.background="rgba(59,130,246,0.08)";
-  }));HTML_BASE
+  }));
   ["dragleave","drop"].forEach(ev=>dropZone.addEventListener(ev,e=>{
     e.preventDefault(); dropZone.style.background="";
   }));
@@ -268,10 +264,15 @@ if(dropZone){
     }
   });
 }
+
 // Hide Guests/Settings if guest UI
 if(location.pathname.startsWith("/guest/")){
   document.querySelectorAll(".guest-hide").forEach(el=>el.style.display="none");
 }
+
+</script>
+""".replace("{w}", str(PRINT_WIDTH_PX))
+
 
 def settings_html_form() -> str:
     from logic import settings_effective, SET_KEYS
