@@ -89,17 +89,20 @@ HTML_BASE = r"""
   input[type="checkbox"]:focus {outline: none; box-shadow: none;}
 </style>
 <body>
-  <header class="top">
-    <div class="top-inner wrap">
-      <div class="title">Receipt Printer</div>
-      <div class="spacer"></div>
-      <nav class="nav" id="main-nav">
-        <a class="link guest-hide" href="/ui/guests" data-nav>Guests</a>
-        <a class="link guest-hide" href="/ui/settings" data-nav>Settings</a>
-        <a class="link" id="logout-link" href="/ui/logout" title="Logout">Logout</a>
-      </nav>
-    </div>
-  </header>
+ <header class="top">
+  <div class="top-inner wrap">
+    <!-- Klickbarer Titel links -->
+    <a href="/ui" class="title" style="text-decoration:none; color:inherit;">Receipt Printer</a>
+    <div class="spacer"></div>
+    <nav class="nav" id="main-nav">
+      <!-- Link oben rechts -->
+      <a class="link" href="/ui" title="Back to Printer">Back to Printer</a>
+      <a class="link guest-hide" href="/ui/guests" data-nav>Guests</a>
+      <a class="link guest-hide" href="/ui/settings" data-nav>Settings</a>
+      <a class="link" id="logout-link" href="/ui/logout" title="Logout">Logout</a>
+    </nav>
+  </div>
+</header>
   <main class="wrap">{content}</main>
 </body>
 </html>
