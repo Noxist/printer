@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 from fastapi import HTTPException, Request, Response
 
 # Gast-Token DB (wie zuvor)
-from guest_tokens import GuestDB
+from guest_tokens import get_guest_db
 
 # ----------------- Konfiguration -----------------
 
@@ -34,8 +34,7 @@ TZ = ZoneInfo(os.getenv("TIMEZONE", "Europe/Zurich"))
 PRINT_WIDTH_PX = int(os.getenv("PRINT_WIDTH_PX", "576"))
 
 SETTINGS_FILE = os.getenv("SETTINGS_FILE", "settings.json")
-GUEST_DB_FILE = os.getenv("GUEST_DB_FILE", "/data/guest_tokens.json")
-GUESTS = GuestDB(GUEST_DB_FILE)
+GUESTS = get_guest_db()
 
 # Rendering Tweaks
 PRINT_DITHER = os.getenv("PRINT_DITHER", "floyd").lower()
