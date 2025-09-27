@@ -158,7 +158,7 @@ class MongoGuestDB:
             raise RuntimeError("MONGO_URI fehlt in Environment Variables.")
         self.client = MongoClient(uri)
         self.coll = self.client[db_name][coll_name]
-        self.coll.create_index("_id", unique=True)
+        self.coll.create_index("_id")
 
     # ---------------------- Utilities -----------------------
 
