@@ -96,7 +96,7 @@ HTML_BASE = r"""
     <div class="spacer"></div>
     <nav class="nav" id="main-nav">
       <!-- Link oben rechts -->
-      <a class="link" href="/ui" title="Printer">Back to Printer</a>
+      <a class="link" href="/ui" title="Printer">Printer</a>
       <a class="link guest-hide" href="/ui/guests" data-nav>Guests</a>
       <a class="link guest-hide" href="/ui/settings" data-nav>Settings</a>
       <a class="link" id="logout-link" href="/ui/logout" title="Logout">Logout</a>
