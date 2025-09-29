@@ -55,7 +55,7 @@ PRINT_WIDTH_PX = int(cfg_get("PRINT_WIDTH_PX", 576))
 
 # ------------------------------- Models ---------------------------------------
 class PrintPayload(BaseModel):
-    title: str = "TASKS"
+    title: str = ""
     lines: list[str] = []
     cut: bool = True
     add_datetime: bool = True
@@ -96,9 +96,10 @@ async def api_print_template(p: PrintPayload, request: Request):
     check_api_key(request)
 
     # 🛑 Blockiere leere Templates
-    if (not p.title.strip()) and (not any(line.strip() for line in p.lines)):
-        log("⚠️ Leeres Template – wird nicht gedruckt.")
-        return {"ok": False, "msg": "Empty template ignored."}
+    if (not p.title.strip() or p.title.strip().lower() == "tasks") and not any(line.strip() for line in p.lines):
+        log("⚠️ Leeres Template oder Defaulttitel – wird nicht gedruckt.")
+        return {"ok": False, "msg": "Empty or default template ignored."}
+
 
     cfg = ReceiptCfg()
     img = render_receipt(p.title, p.lines, add_time=p.add_datetime, width_px=PRINT_WIDTH_PX, cfg=cfg)
@@ -162,7 +163,7 @@ def ui(request: Request):
 
 @app.get("/ui/logout")
 def ui_logout():
-    r = RedirectResponse("/ui", status_code=303)
+    r = RedirectResponse("/ui?force_reload=1", status_code=303)
     r.delete_cookie("ui_token", path="/")
     return r
 
@@ -184,9 +185,16 @@ async def ui_print_template(
     authed, set_cookie = ui_handle_auth_and_cookie(request, pass_, remember)
     if not authed:
         return html_page("Receipt Printer", "<div class='card'>Wrong password.</div>")
+
+    # 👇 NEU: Leere oder Default-Tickets blockieren
+    if (not title.strip() or title.strip().lower() == "tasks") and not any(ln.strip() for ln in lines.splitlines()):
+        log("⚠️ Leeres oder Default-Template – kein Druck.")
+        return html_page("Receipt Printer", "<div class='card'>Leeres oder Default-Template wurde ignoriert.</div>")
+
     try:
         cfg = ReceiptCfg()
-        img = render_receipt(title.strip(), [ln.rstrip() for ln in lines.splitlines()], add_time=add_dt, width_px=PRINT_WIDTH_PX, cfg=cfg)
+        img = render_receipt(title.strip(), [ln.rstrip() for ln in lines.splitlines()],
+                             add_time=add_dt, width_px=PRINT_WIDTH_PX, cfg=cfg)
         b64 = pil_to_base64_png(img)
         mqtt_publish_image_base64(b64, cut_paper=1)
         resp = RedirectResponse("/ui#tpl", status_code=303)
@@ -196,6 +204,7 @@ async def ui_print_template(
     except Exception as e:
         log("ui_print_template error:", repr(e))
         return html_page("Receipt Printer", f"<div class='card'>Error: {e}</div>")
+
 
 @app.post("/ui/print/raw")
 async def ui_print_raw(
