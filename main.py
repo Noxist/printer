@@ -335,6 +335,8 @@ def ui_settings(request: Request):
         return HTMLResponse(content)
     return html_page("Settings", content)
 
+from logic import _reload_settings_if_changed
+
 @app.post("/ui/settings/save", response_class=HTMLResponse)
 async def ui_settings_save(request: Request):
     if not require_ui_auth(request):
@@ -356,8 +358,9 @@ async def ui_settings_save(request: Request):
                 else:
                     SETTINGS[key] = val
     _save_settings(SETTINGS)
+    _reload_settings_if_changed()  # 👈 HIER neu einfügen!
     return RedirectResponse("/ui/settings", status_code=303)
-
+    
 @app.get("/ui/settings/test", response_class=HTMLResponse)
 def ui_settings_test(request: Request):
     if not require_ui_auth(request):
