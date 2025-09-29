@@ -237,19 +237,21 @@ def _to_1bit(img: Image.Image) -> Image.Image:
     return imgL.convert("1", dither=Image.FLOYDSTEINBERG)
 
 def pil_to_base64_png(img: Image.Image) -> str:
-    # Graustufen-PNG optional
     grayscale_png = str(cfg_get("GRAYSCALE_PNG", False)).lower() in ("1","true","yes","on")
+
     if grayscale_png:
         imgL = img.convert("L")
         imgL = _apply_tone(imgL)
-        if DEBUG_SAVE_LAST:
-            try: imgL.save("/tmp/last_print.png", format="PNG", optimize=True)
-            except: pass
         buf = io.BytesIO()
-        img.info["dpi"] = (72, 72)
-        img.info["resolution"] = (72, 72)
-        imgL.save(buf, format="PNG", optimize=True)
+        # --- KORREKT: schreibe explizit dpi=(72,72) ---
+        imgL.save(buf, format="PNG", optimize=True, dpi=(72, 72))
         return base64.b64encode(buf.getvalue()).decode("ascii")
+
+    img1 = _to_1bit(img)
+    buf = io.BytesIO()
+    # --- KORREKT: schreibe explizit dpi=(72,72) ---
+    img1.save(buf, format="PNG", optimize=True, dpi=(72, 72))
+    return base64.b64encode(buf.getvalue()).decode("ascii")
 
     # Standard: 1-Bit mit Dither
     img1 = _to_1bit(img)
