@@ -110,13 +110,20 @@ def _save_settings(data: dict):
     except Exception as e:
         log("❌ settings speichern fehlgeschlagen:", repr(e))
 
+_last_reload = 0
+_reload_interval = 3  # Sekunden (du kannst das anpassen)
+
 def _reload_settings_if_changed():
-    global SETTINGS
-    try:
-        SETTINGS = _load_settings()
-        log("♻️ Settings neu geladen:", SETTINGS)
-    except Exception as e:
-        log("⚠️ Fehler beim Neuladen der Settings:", repr(e))
+    global SETTINGS, _last_reload
+    now = time.time()
+    if now - _last_reload < _reload_interval:
+        return  # 👈 zu früh, überspringen
+    _last_reload = now
+    log("📥 Lade settings aus Mongo...")
+    new_data = _load_settings()
+    if new_data and new_data != SETTINGS:
+        SETTINGS = new_data
+        log(f"♻️ Settings neu geladen: {SETTINGS}")
 
 SETTINGS = _load_settings()
 
