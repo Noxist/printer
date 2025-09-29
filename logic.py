@@ -32,8 +32,7 @@ UI_REMEMBER_DAYS = int(os.getenv("UI_REMEMBER_DAYS", "30"))
 
 TZ = ZoneInfo(os.getenv("TIMEZONE", "Europe/Zurich"))
 PRINT_WIDTH_PX = int(os.getenv("PRINT_WIDTH_PX", "576"))
-if PRINT_WIDTH_PX < 200:
-    PRINT_WIDTH_PX = 576
+
 SETTINGS_FILE = os.getenv("SETTINGS_FILE", "settings.json")
 GUESTS = get_guest_db()
 
@@ -237,21 +236,17 @@ def _to_1bit(img: Image.Image) -> Image.Image:
     return imgL.convert("1", dither=Image.FLOYDSTEINBERG)
 
 def pil_to_base64_png(img: Image.Image) -> str:
+    # Graustufen-PNG optional
     grayscale_png = str(cfg_get("GRAYSCALE_PNG", False)).lower() in ("1","true","yes","on")
-
     if grayscale_png:
         imgL = img.convert("L")
         imgL = _apply_tone(imgL)
+        if DEBUG_SAVE_LAST:
+            try: imgL.save("/tmp/last_print.png", format="PNG", optimize=True)
+            except: pass
         buf = io.BytesIO()
-        # --- KORREKT: schreibe explizit dpi=(72,72) ---
-        imgL.save(buf, format="PNG", optimize=True, dpi=(72, 72))
+        imgL.save(buf, format="PNG", optimize=True)
         return base64.b64encode(buf.getvalue()).decode("ascii")
-
-    img1 = _to_1bit(img)
-    buf = io.BytesIO()
-    # --- KORREKT: schreibe explizit dpi=(72,72) ---
-    img1.save(buf, format="PNG", optimize=True, dpi=(72, 72))
-    return base64.b64encode(buf.getvalue()).decode("ascii")
 
     # Standard: 1-Bit mit Dither
     img1 = _to_1bit(img)
@@ -319,12 +314,7 @@ class ReceiptCfg:
             self.title_size = max(self.title_size, 44)
             self.gap_title_text = max(self.gap_title_text, 14)
             self.rule_after_title = True
-        # DPI-Korrektur für shiper.app (Fonts sonst zu klein)
-        SCALE_FIX = float(os.getenv("FONT_SCALE", "1.33"))
-        self.title_size = int(self.title_size * SCALE_FIX)
-        self.text_size  = int(self.text_size * SCALE_FIX)
-        self.time_size  = int(self.time_size * SCALE_FIX)
-        
+
         self.font_title = _safe_font(self.title_font_name, self.title_size)
         self.font_text  = _safe_font(self.text_font_name,  self.text_size)
         self.font_time  = _safe_font(self.time_font_name,  self.time_size)
@@ -384,11 +374,7 @@ def render_receipt(
     total_h = max(120, cur_y)
 
     # Pass 2: Zeichnen auf endgueltiger Hoehe (Graustufen-L)
-  # --- Force full print width for shiper.app ---
-    forced_width = int(os.getenv("PRINT_WIDTH_PX", "576"))
-    img = Image.new("L", (forced_width, total_h), color=255)
-    width_px = forced_width  # erzwinge auch logische Breite
-
+    img = Image.new("L", (width_px, total_h), color=255)
     draw = ImageDraw.Draw(img)
 
     y = cfg.margin_top
