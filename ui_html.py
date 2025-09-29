@@ -20,10 +20,15 @@ HTML_BASE = r"""
     }
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
-  html,body{height:100%}
-  body{
-    margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-    color:var(--text); line-height:1.4;
+html {
+  font-size: 16px; /* Basis-Schriftgrösse explizit setzen */
+}
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  color:var(--text);
+  line-height:1.5;
+  font-size: 1rem; /* feste, konsistente Grösse */
     background:
       radial-gradient(1200px 800px at 20% -10%, rgba(59,130,246,.15), transparent 70%),
       radial-gradient(1000px 600px at 120% 10%, rgba(139,92,246,.12), transparent 70%),
