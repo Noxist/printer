@@ -32,7 +32,8 @@ UI_REMEMBER_DAYS = int(os.getenv("UI_REMEMBER_DAYS", "30"))
 
 TZ = ZoneInfo(os.getenv("TIMEZONE", "Europe/Zurich"))
 PRINT_WIDTH_PX = int(os.getenv("PRINT_WIDTH_PX", "576"))
-
+if PRINT_WIDTH_PX < 200:
+    PRINT_WIDTH_PX = 576
 SETTINGS_FILE = os.getenv("SETTINGS_FILE", "settings.json")
 GUESTS = get_guest_db()
 
@@ -245,6 +246,8 @@ def pil_to_base64_png(img: Image.Image) -> str:
             try: imgL.save("/tmp/last_print.png", format="PNG", optimize=True)
             except: pass
         buf = io.BytesIO()
+        img.info["dpi"] = (72, 72)
+        img.info["resolution"] = (72, 72)
         imgL.save(buf, format="PNG", optimize=True)
         return base64.b64encode(buf.getvalue()).decode("ascii")
 
