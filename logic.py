@@ -314,7 +314,12 @@ class ReceiptCfg:
             self.title_size = max(self.title_size, 44)
             self.gap_title_text = max(self.gap_title_text, 14)
             self.rule_after_title = True
-
+        # DPI-Korrektur für shiper.app (Fonts sonst zu klein)
+        SCALE_FIX = float(os.getenv("FONT_SCALE", "1.33"))
+        self.title_size = int(self.title_size * SCALE_FIX)
+        self.text_size  = int(self.text_size * SCALE_FIX)
+        self.time_size  = int(self.time_size * SCALE_FIX)
+        
         self.font_title = _safe_font(self.title_font_name, self.title_size)
         self.font_text  = _safe_font(self.text_font_name,  self.text_size)
         self.font_time  = _safe_font(self.time_font_name,  self.time_size)
