@@ -70,22 +70,39 @@ def now_str(fmt: str = "%d.%m.%Y %H:%M") -> str:
     return datetime.now(TZ).strftime(fmt)
 
 # ----------------- Settings -----------------
+from pymongo import MongoClient
+
+def _get_settings_collection():
+    # nutzt denselben Mongo-Client wie guest_tokens.py
+    try:
+        client = MongoClient(os.getenv("MONGODB_URI"))
+        db = client.get_database("printer")
+        return db["settings"]
+    except Exception as e:
+        log("MongoDB settings connection error:", repr(e))
+        return None
 
 def _load_settings() -> dict:
-    if not os.path.exists(SETTINGS_FILE):
-        return {}
     try:
-        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        coll = _get_settings_collection()
+        if not coll:
+            return {}
+        doc = coll.find_one({"_id": "settings"})
+        return doc["data"] if doc and "data" in doc else {}
     except Exception as e:
-        log("settings.json laden fehlgeschlagen:", repr(e))
+        log("settings laden fehlgeschlagen:", repr(e))
         return {}
 
 def _save_settings(data: dict):
-    tmp = SETTINGS_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, SETTINGS_FILE)
+    try:
+        coll = _get_settings_collection()
+        if not coll:
+            log("MongoDB nicht verfügbar, settings nicht gespeichert.")
+            return
+        coll.update_one({"_id": "settings"}, {"$set": {"data": data}}, upsert=True)
+        log("settings erfolgreich in MongoDB gespeichert.")
+    except Exception as e:
+        log("settings speichern fehlgeschlagen:", repr(e))
 
 SETTINGS = _load_settings()
 
