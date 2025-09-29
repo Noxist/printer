@@ -78,30 +78,51 @@ def ok():
 @app.post("/print")
 async def print_job(p: PrintPayload, request: Request):
     check_api_key(request)
+
+    # 🛑 Keine leeren Titel oder Zeilen drucken
+    if (not p.title.strip()) and (not any(line.strip() for line in p.lines)):
+        log("⚠️ Leerer PrintJob – wird übersprungen.")
+        return {"ok": False, "msg": "Empty print job ignored."}
+
     cfg = ReceiptCfg()
     img = render_receipt(p.title, p.lines, add_time=p.add_datetime, width_px=PRINT_WIDTH_PX, cfg=cfg)
     b64 = pil_to_base64_png(img)
     mqtt_publish_image_base64(b64, cut_paper=(1 if p.cut else 0))
     return {"ok": True}
+
 
 @app.post("/api/print/template")
 async def api_print_template(p: PrintPayload, request: Request):
     check_api_key(request)
+
+    # 🛑 Blockiere leere Templates
+    if (not p.title.strip()) and (not any(line.strip() for line in p.lines)):
+        log("⚠️ Leeres Template – wird nicht gedruckt.")
+        return {"ok": False, "msg": "Empty template ignored."}
+
     cfg = ReceiptCfg()
     img = render_receipt(p.title, p.lines, add_time=p.add_datetime, width_px=PRINT_WIDTH_PX, cfg=cfg)
     b64 = pil_to_base64_png(img)
     mqtt_publish_image_base64(b64, cut_paper=(1 if p.cut else 0))
     return {"ok": True}
 
+
 @app.post("/api/print/raw")
 async def api_print_raw(p: RawPayload, request: Request):
     check_api_key(request)
+
+    # 🛑 Keine leeren Texte drucken
+    if not p.text.strip():
+        log("⚠️ Leerer Raw-Text – Druck übersprungen.")
+        return {"ok": False, "msg": "Empty raw print ignored."}
+
     cfg = ReceiptCfg()
     lines = (p.text + (f"\n{now_str('%Y-%m-%d %H:%M')}" if p.add_datetime else "")).splitlines()
     img = render_receipt("", lines, add_time=False, width_px=PRINT_WIDTH_PX, cfg=cfg)
     b64 = pil_to_base64_png(img)
     mqtt_publish_image_base64(b64, cut_paper=1)
     return {"ok": True}
+
 
 @app.post("/api/print/image")
 async def api_print_image(
@@ -112,6 +133,12 @@ async def api_print_image(
 ):
     check_api_key(request)
     content = await file.read()
+
+    # 🛑 Prüfe, ob die Datei überhaupt Bilddaten enthält
+    if not content:
+        log("⚠️ Leeres Bild – wird nicht gedruckt.")
+        return {"ok": False, "msg": "Empty image ignored."}
+
     src = render_image_with_headers(
         Image.open(io.BytesIO(content)),
         PRINT_WIDTH_PX,
