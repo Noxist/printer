@@ -379,7 +379,11 @@ def render_receipt(
     total_h = max(120, cur_y)
 
     # Pass 2: Zeichnen auf endgueltiger Hoehe (Graustufen-L)
-    img = Image.new("L", (width_px, total_h), color=255)
+  # --- Force full print width for shiper.app ---
+    forced_width = int(os.getenv("PRINT_WIDTH_PX", "576"))
+    img = Image.new("L", (forced_width, total_h), color=255)
+    width_px = forced_width  # erzwinge auch logische Breite
+
     draw = ImageDraw.Draw(img)
 
     y = cfg.margin_top
