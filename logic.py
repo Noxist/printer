@@ -110,14 +110,20 @@ def _save_settings(data: dict):
     except Exception as e:
         log("❌ settings speichern fehlgeschlagen:", repr(e))
 
+def _reload_settings_if_changed():
+    global SETTINGS
+    try:
+        SETTINGS = _load_settings()
+        log("♻️ Settings neu geladen:", SETTINGS)
+    except Exception as e:
+        log("⚠️ Fehler beim Neuladen der Settings:", repr(e))
+
 SETTINGS = _load_settings()
 
-
 def cfg_get(name: str, default=None):
-    # Nur Settings aus settings.json berücksichtigen
+    _reload_settings_if_changed()  # 👈 hier wird bei jedem Zugriff neu geladen
     if name in SETTINGS:
         return SETTINGS[name]
-    # Falls kein Wert in settings.json vorhanden ist, nimm Default
     return default
 
 def cfg_get_int(name: str, default: int) -> int:
