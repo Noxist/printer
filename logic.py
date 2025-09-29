@@ -90,9 +90,11 @@ def _save_settings(data: dict):
 SETTINGS = _load_settings()
 
 def cfg_get(name: str, default=None):
+    # Nur Settings aus settings.json berücksichtigen
     if name in SETTINGS:
         return SETTINGS[name]
-    return os.getenv(name, default)
+    # Falls kein Wert in settings.json vorhanden ist, nimm Default
+    return default
 
 def cfg_get_int(name: str, default: int) -> int:
     try:
