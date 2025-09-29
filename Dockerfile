@@ -1,5 +1,6 @@
 FROM python:3.11-slim
-
+# Fonts installieren (für korrekte Schriftgrössen)
+RUN apt-get update && apt-get install -y fonts-dejavu-core
 WORKDIR /app
 
 COPY . .
