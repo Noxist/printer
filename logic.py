@@ -285,7 +285,7 @@ class ReceiptCfg:
         self.text_font_name  = cfg_get("RECEIPT_TEXT_FONT",  "DejaVuSans.ttf")
         self.time_font_name  = cfg_get("RECEIPT_TIME_FONT",  "DejaVuSans.ttf")
 
-        self.margin_top    = cfg_get_int("RECEIPT_MARGIN_TOP", 28)
+        self.margin_top = cfg_get_int("RECEIPT_MARGIN_TOP", 60)
         self.margin_bottom = cfg_get_int("RECEIPT_MARGIN_BOTTOM", 18)
         self.margin_left   = cfg_get_int("RECEIPT_MARGIN_LEFT", 18)
         self.margin_right  = cfg_get_int("RECEIPT_MARGIN_RIGHT", 18)
