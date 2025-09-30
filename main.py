@@ -154,12 +154,26 @@ async def api_print_image(
 # ------------------------------- UI: Simple Frontend --------------------------
 @app.get("/ui", response_class=HTMLResponse)
 def ui(request: Request):
-    auth_required = "false" if require_ui_auth(request) else ("true" if cfg_get("UI_PASS") else "false")
+    # Nach Logout erzwingen wir die Passworteingabe
+    force_auth = request.query_params.get("force_reload") == "1"
+
+    if force_auth:
+        auth_required = "true"
+    else:
+        auth_required = "false" if require_ui_auth(request) else ("true" if cfg_get("UI_PASS") else "false")
+
     html = HTML_UI.replace("{{AUTH_REQUIRED}}", auth_required)
 
+    # Caching hart ausschalten, damit das Login-UI nach Logout nicht aus dem Cache kommt
+    headers = {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    }
+
     if request.headers.get("X-Partial") == "true":
-        return HTMLResponse(html)
-    return html_page("Receipt Printer", html)
+        return HTMLResponse(html, headers=headers)
+    return HTMLResponse(html_page("Receipt Printer", html), headers=headers)
 
 @app.get("/ui/logout")
 def ui_logout():
@@ -173,10 +187,11 @@ def ui_handle_auth_and_cookie(request: Request, pass_: str | None, remember: boo
         return False, False
     return True, should_set_cookie
 
+# ------------------------------- UI: Print Template ---------------------------
 @app.post("/ui/print/template")
 async def ui_print_template(
     request: Request,
-    title: str = Form("TASKS"),
+    title: str = Form(""),   # <- vorher "TASKS"
     lines: str = Form(""),
     add_dt: bool = Form(False),
     pass_: str | None = Form(None, alias="pass"),
@@ -186,15 +201,22 @@ async def ui_print_template(
     if not authed:
         return html_page("Receipt Printer", "<div class='card'>Wrong password.</div>")
 
-    # 👇 NEU: Leere oder Default-Tickets blockieren
-    if (not title.strip() or title.strip().lower() == "tasks") and not any(ln.strip() for ln in lines.splitlines()):
-        log("⚠️ Leeres oder Default-Template – kein Druck.")
-        return html_page("Receipt Printer", "<div class='card'>Leeres oder Default-Template wurde ignoriert.</div>")
+    # Inhalt prüfen (Login-Only oder „leeres / Default-Template“ → NICHT drucken)
+    title_s = (title or "").strip()
+    body_lines = [ln.rstrip() for ln in (lines or "").splitlines()]
+    has_body = any(ln.strip() for ln in body_lines)
+    is_default_title = (title_s.lower() == "tasks" or title_s == "")
+
+    if is_default_title and not has_body:
+        log("⚠️ Leeres oder Default-Template – kein Druck (nur Auth/Cookie).")
+        resp = RedirectResponse("/ui#tpl", status_code=303)
+        if set_cookie:
+            issue_cookie(resp)
+        return resp
 
     try:
         cfg = ReceiptCfg()
-        img = render_receipt(title.strip(), [ln.rstrip() for ln in lines.splitlines()],
-                             add_time=add_dt, width_px=PRINT_WIDTH_PX, cfg=cfg)
+        img = render_receipt(title_s, body_lines, add_time=add_dt, width_px=PRINT_WIDTH_PX, cfg=cfg)
         b64 = pil_to_base64_png(img)
         mqtt_publish_image_base64(b64, cut_paper=1)
         resp = RedirectResponse("/ui#tpl", status_code=303)
@@ -205,7 +227,7 @@ async def ui_print_template(
         log("ui_print_template error:", repr(e))
         return html_page("Receipt Printer", f"<div class='card'>Error: {e}</div>")
 
-
+# ------------------------------- UI: Print Raw --------------------------------
 @app.post("/ui/print/raw")
 async def ui_print_raw(
     request: Request,
@@ -217,6 +239,15 @@ async def ui_print_raw(
     authed, set_cookie = ui_handle_auth_and_cookie(request, pass_, remember)
     if not authed:
         return html_page("Receipt Printer", "<div class='card'>Wrong password.</div>")
+
+    # Login-Only/leer verhindern: kein Druck, nur Cookie setzen und zurück
+    if not (text or "").strip() and not add_dt:
+        log("⚠️ Leerer RAW-Print – kein Druck (nur Auth/Cookie).")
+        resp = RedirectResponse("/ui#raw", status_code=303)
+        if set_cookie:
+            issue_cookie(resp)
+        return resp
+
     try:
         cfg = ReceiptCfg()
         lines = (text + (f"\n{now_str('%Y-%m-%d %H:%M')}" if add_dt else "")).splitlines()
@@ -231,6 +262,7 @@ async def ui_print_raw(
         log("ui_print_raw error:", repr(e))
         return html_page("Receipt Printer", f"<div class='card'>Error: {e}</div>")
 
+# ------------------------------- UI: Print Image ------------------------------
 @app.post("/ui/print/image")
 async def ui_print_image(
     request: Request,
