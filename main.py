@@ -179,6 +179,29 @@ def ui(request: Request):
     page.headers.update(headers)
     return page
 
+@app.get("/ui/logout")
+def ui_logout():
+    # Cookie löschen und ein hartes Reload des Login-UI erzwingen,
+    # damit das Passwortfeld sicher wieder sichtbar ist (kein Cache).
+    r = RedirectResponse("/ui?force_reload=1", status_code=303)
+    r.delete_cookie("ui_token", path="/")
+    return r
+
+
+def ui_handle_auth_and_cookie(
+    request: Request,
+    pass_: str | None,
+    remember: bool
+) -> tuple[bool, bool]:
+    """
+    Zentraler Helper: prüft Login und sagt, ob ein 'Remember me' Cookie
+    gesetzt werden soll.
+    """
+    authed, should_set_cookie = ui_auth_state(request, pass_, remember)
+    if not authed:
+        return False, False
+    return True, should_set_cookie
+
 # ------------------------------- UI: Print Template ---------------------------
 @app.post("/ui/print/template")
 async def ui_print_template(
