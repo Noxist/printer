@@ -173,19 +173,11 @@ def ui(request: Request):
 
     if request.headers.get("X-Partial") == "true":
         return HTMLResponse(html, headers=headers)
-    return HTMLResponse(html_page("Receipt Printer", html), headers=headers)
 
-@app.get("/ui/logout")
-def ui_logout():
-    r = RedirectResponse("/ui?force_reload=1", status_code=303)
-    r.delete_cookie("ui_token", path="/")
-    return r
-
-def ui_handle_auth_and_cookie(request: Request, pass_: str | None, remember: bool) -> tuple[bool, bool]:
-    authed, should_set_cookie = ui_auth_state(request, pass_, remember)
-    if not authed:
-        return False, False
-    return True, should_set_cookie
+    # ✅ Fix: html_page() gibt bereits eine Response zurück
+    page = html_page("Receipt Printer", html)
+    page.headers.update(headers)
+    return page
 
 # ------------------------------- UI: Print Template ---------------------------
 @app.post("/ui/print/template")
