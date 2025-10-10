@@ -92,12 +92,24 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         log(f"📥 Colonnes-Ticket in Queue gelegt (len={len(b64)}).")
         return
 
-    if is_web_ticket:
-        log("📨 Web-Ticket empfangen (ignoriert, da bereits gesendet).")
+if is_web_ticket:
+    # Wenn es vom Colonnes-Topic kommt, trotzdem drucken
+    if msg.topic == "Prn20B1B50C2199":
+        b64 = payload["data_base64"]
+        cut = int(payload.get("cut_paper", 1))
+        meta = {
+            "source": "colonnes_web",
+            "paper_width_mm": payload.get("paper_width_mm", 0),
+            "paper_height_mm": payload.get("paper_height_mm", 0),
+        }
+        from queue_print import enqueue_base64_png
+        enqueue_base64_png(b64, cut_paper=cut, meta=meta)
+        log(f"📥 Colonnes-Web-Ticket in Queue gelegt (len={len(b64)}).")
         return
-
-    log("⚠️ Unbekanntes MQTT-Payload empfangen:", str(payload)[:200])
-
+    else:
+        # Web-Tickets deiner eigenen Web-App weiter ignorieren
+        log("📨 Eigenes Web-Ticket empfangen (ignoriert).")
+        return
 
 def init_mqtt():
     global client
