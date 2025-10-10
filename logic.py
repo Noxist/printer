@@ -47,7 +47,59 @@ DEBUG_SAVE_LAST = os.getenv("DEBUG_SAVE_LAST", "0").lower() in ("1","true","yes"
 
 # ----------------- MQTT -----------------
 
+from queue_print import enqueue_base64_png
+
 client = None
+
+def log(*a):
+    print("[printer]", *a, file=sys.stdout, flush=True)
+
+def _handle_incoming_mqtt(_client, _userdata, msg):
+    # 🔹 Optionaler Schutz: ignoriert fremde Topics
+    if not msg.topic.startswith("print/"):
+        log(f"⚠️ Ignoriere fremdes Topic: {msg.topic}")
+        return
+
+    try:
+        payload = json.loads(msg.payload.decode("utf-8", errors="ignore"))
+    except Exception as e:
+        log(f"⚠️ MQTT decode error: {e}")
+        return
+
+    # Erkennen, ob es ein Colonnes-Ticket oder Web-Ticket ist
+    is_colonnes = (
+        isinstance(payload, dict)
+        and payload.get("data_type") == "png"
+        and "data_base64" in payload
+        and "ticket_id" not in payload
+    )
+    is_web_ticket = (
+        isinstance(payload, dict)
+        and payload.get("data_type") == "png"
+        and "data_base64" in payload
+        and "ticket_id" in payload
+    )
+
+    if is_colonnes:
+        b64 = payload["data_base64"]
+        cut = int(payload.get("cut_paper", 1))
+        meta = {
+            "source": "colonnes",
+            "paper_width_mm": payload.get("paper_width_mm", 0),
+            "paper_height_mm": payload.get("paper_height_mm", 0),
+        }
+        enqueue_base64_png(b64, cut_paper=cut, meta=meta)
+        log(f"📥 Colonnes-Ticket in Queue gelegt (len={len(b64)}).")
+        return
+
+    if is_web_ticket:
+        # Web-Tickets publiziert deine App selbst → hier nicht doppelt senden
+        log("📨 Web-Ticket empfangen (ignoriert, da bereits gesendet).")
+        return
+
+    log("⚠️ Unbekanntes MQTT-Payload empfangen:", str(payload)[:200])
+
+
 def init_mqtt():
     global client
     import paho.mqtt.client as mqtt
@@ -56,13 +108,21 @@ def init_mqtt():
         client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
     if MQTT_USER or MQTT_PASS:
         client.username_pw_set(MQTT_USER, MQTT_PASS)
+
+    client.on_message = _handle_incoming_mqtt
+
     client.connect(MQTT_HOST, MQTT_PORT, 60)
+    # Optional: separates Topic fuer Colonnes erlauben (faellt auf TOPIC zurueck)
+    colonnes_topic = os.getenv("COLONNES_TOPIC", TOPIC)
+    client.subscribe(TOPIC, qos=PUBLISH_QOS)
+    if colonnes_topic != TOPIC:
+        client.subscribe(colonnes_topic, qos=PUBLISH_QOS)
+
     client.loop_start()
+    log(f"✅ MQTT connected & subscribed to {TOPIC}" + (f" and {colonnes_topic}" if colonnes_topic != TOPIC else ""))
 
+# WICHTIG: jetzt erst aufrufen, nachdem log/_handle_incoming_mqtt definiert sind
 init_mqtt()
-
-def log(*a):
-    print("[printer]", *a, file=sys.stdout, flush=True)
 
 # ----------------- Zeit/Format -----------------
 
