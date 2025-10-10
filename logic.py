@@ -46,15 +46,15 @@ GRAYSCALE_PNG = os.getenv("GRAYSCALE_PNG", "false").lower() in ("1","true","yes"
 DEBUG_SAVE_LAST = os.getenv("DEBUG_SAVE_LAST", "0").lower() in ("1","true","yes","on")  # darf env bleiben
 
 # ----------------- MQTT -----------------
-
-from queue_print import enqueue_base64_png
-
 client = None
 
 def log(*a):
     print("[printer]", *a, file=sys.stdout, flush=True)
 
 def _handle_incoming_mqtt(_client, _userdata, msg):
+    # Import hier, um Circular Import zu vermeiden
+    from queue_print import enqueue_base64_png
+
     # 🔹 Optionaler Schutz: ignoriert fremde Topics
     if not msg.topic.startswith("print/"):
         log(f"⚠️ Ignoriere fremdes Topic: {msg.topic}")
