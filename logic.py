@@ -53,7 +53,6 @@ def log(*a):
 
 
 def _handle_incoming_mqtt(_client, _userdata, msg):
-    # Import hier, um Circular Import zu vermeiden
     from queue_print import enqueue_base64_png
 
     # Nur auf dein Drucker-Topic reagieren
@@ -65,6 +64,12 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         payload = json.loads(msg.payload.decode("utf-8", errors="ignore"))
     except Exception as e:
         log(f"⚠️ MQTT decode error: {e}")
+        return
+
+    # 🔹 Eigene Nachrichten (die du selbst publiziert hast) überspringen
+    # Erkennung: gleiche Struktur, kommt aber vom eigenen Publish-Prozess
+    if isinstance(payload, dict) and payload.get("source") in ["colonnes_web", "printer"]:
+        log("🔁 Eigene MQTT-Nachricht erkannt – wird ignoriert.")
         return
 
     # Erkennen, ob es ein Colonnes- oder Web-Ticket ist
@@ -94,7 +99,7 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         log(f"📥 Colonnes-Ticket in Queue gelegt (len={len(b64)}).")
         return
 
-    # 🔹 Colonnes-Web-Tickets (haben ticket_id, kommen aber vom Drucker-Topic)
+    # 🔹 Colonnes-Web-Tickets (haben ticket_id, kommen aber vom Colonnes-Client)
     if is_web_ticket and msg.topic == "Prn20B1B50C2199":
         b64 = payload["data_base64"]
         cut = int(payload.get("cut_paper", 1))
@@ -114,6 +119,7 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
 
     # 🔹 Unbekannte Struktur
     log("⚠️ Unbekanntes MQTT-Payload empfangen:", str(payload)[:200])
+
 
 
 def init_mqtt():
