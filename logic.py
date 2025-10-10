@@ -66,28 +66,18 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         log(f"⚠️ MQTT decode error: {e}")
         return
 
-    # 🔹 Eigene Nachrichten (die du selbst publiziert hast) überspringen
-    # Erkennung: gleiche Struktur, kommt aber vom eigenen Publish-Prozess
-    if isinstance(payload, dict) and payload.get("source") in ["colonnes_web", "printer"]:
+    # 🔹 Eigene Nachrichten (vom Drucker oder Web-Handler) ignorieren
+    if isinstance(payload, dict) and payload.get("source") in ["printer", "colonnes_web"]:
         log("🔁 Eigene MQTT-Nachricht erkannt – wird ignoriert.")
         return
 
-    # Erkennen, ob es ein Colonnes- oder Web-Ticket ist
-    is_colonnes = (
+    # 🔹 Colonnes-Tickets (kommen ohne ticket_id)
+    if (
         isinstance(payload, dict)
         and payload.get("data_type") == "png"
         and "data_base64" in payload
         and "ticket_id" not in payload
-    )
-    is_web_ticket = (
-        isinstance(payload, dict)
-        and payload.get("data_type") == "png"
-        and "data_base64" in payload
-        and "ticket_id" in payload
-    )
-
-    # 🔹 Colonnes-Tickets (ohne ticket_id)
-    if is_colonnes:
+    ):
         b64 = payload["data_base64"]
         cut = int(payload.get("cut_paper", 1))
         meta = {
@@ -99,8 +89,14 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         log(f"📥 Colonnes-Ticket in Queue gelegt (len={len(b64)}).")
         return
 
-    # 🔹 Colonnes-Web-Tickets (haben ticket_id, kommen aber vom Colonnes-Client)
-    if is_web_ticket and msg.topic == "Prn20B1B50C2199":
+    # 🔹 Colonnes-Web-Tickets (haben ticket_id, aber kommen von Colonnes)
+    if (
+        isinstance(payload, dict)
+        and payload.get("data_type") == "png"
+        and "data_base64" in payload
+        and "ticket_id" in payload
+        and msg.topic == "Prn20B1B50C2199"
+    ):
         b64 = payload["data_base64"]
         cut = int(payload.get("cut_paper", 1))
         meta = {
@@ -112,14 +108,18 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         log(f"📥 Colonnes-Web-Ticket in Queue gelegt (len={len(b64)}).")
         return
 
-    # 🔹 Eigene Web-Tickets deiner App (werden ignoriert)
-    if is_web_ticket:
+    # 🔹 Eigene Web-Tickets deiner App (mit ticket_id, aber ohne Colonnes)
+    if (
+        isinstance(payload, dict)
+        and payload.get("data_type") == "png"
+        and "data_base64" in payload
+        and "ticket_id" in payload
+    ):
         log("📨 Eigenes Web-Ticket empfangen (ignoriert).")
         return
 
-    # 🔹 Unbekannte Struktur
+    # 🔹 Unbekanntes Format
     log("⚠️ Unbekanntes MQTT-Payload empfangen:", str(payload)[:200])
-
 
 
 def init_mqtt():
@@ -134,7 +134,8 @@ def init_mqtt():
     client.on_message = _handle_incoming_mqtt
 
     client.connect(MQTT_HOST, MQTT_PORT, 60)
-    # Nur das Topic deines Druckers abonnieren
+
+    # Nur dein eigenes Drucker-Topic abonnieren
     printer_topic = os.getenv("PRINT_TOPIC", "Prn20B1B50C2199")
     client.subscribe(printer_topic, qos=PUBLISH_QOS)
 
@@ -144,6 +145,7 @@ def init_mqtt():
 
 # Wichtig: erst hier aufrufen
 init_mqtt()
+
 
 # ----------------- Zeit/Format -----------------
 
@@ -384,9 +386,10 @@ def mqtt_publish_image_base64(b64_png: str, cut_paper: int = 1,
         "data_type": "png",
         "data_base64": b64_png,
         "paper_type": 0,
-        "paper_width_mm": paper_width_mm,
+           "paper_width_mm": paper_width_mm,
         "paper_height_mm": paper_height_mm,
-        "cut_paper": cut_paper
+        "cut_paper": cut_paper,
+        "source": "printer"  # 🔹 Kennzeichnung: vom Drucker selbst gesendet
     }
     log(f"MQTT publish → topic={TOPIC} qos={PUBLISH_QOS} bytes={len(b64_png)}")
     client.publish(TOPIC, json.dumps(payload), qos=PUBLISH_QOS, retain=False)
