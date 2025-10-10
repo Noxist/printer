@@ -55,8 +55,8 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
     # Import hier, um Circular Import zu vermeiden
     from queue_print import enqueue_base64_png
 
-    # 🔹 Optionaler Schutz: ignoriert fremde Topics
-    if not msg.topic.startswith("print/"):
+    # Nur auf dein Drucker-Topic reagieren
+    if msg.topic != "Prn20B1B50C2199":
         log(f"⚠️ Ignoriere fremdes Topic: {msg.topic}")
         return
 
@@ -66,7 +66,7 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         log(f"⚠️ MQTT decode error: {e}")
         return
 
-    # Erkennen, ob es ein Colonnes-Ticket oder Web-Ticket ist
+    # Erkennen, ob es ein Colonnes- oder Web-Ticket ist
     is_colonnes = (
         isinstance(payload, dict)
         and payload.get("data_type") == "png"
@@ -93,7 +93,6 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         return
 
     if is_web_ticket:
-        # Web-Tickets publiziert deine App selbst → hier nicht doppelt senden
         log("📨 Web-Ticket empfangen (ignoriert, da bereits gesendet).")
         return
 
@@ -112,18 +111,15 @@ def init_mqtt():
     client.on_message = _handle_incoming_mqtt
 
     client.connect(MQTT_HOST, MQTT_PORT, 60)
-    # Optional: separates Topic fuer Colonnes erlauben (faellt auf TOPIC zurueck)
-    colonnes_topic = os.getenv("COLONNES_TOPIC", TOPIC)
-    client.subscribe(TOPIC, qos=PUBLISH_QOS)
-    if colonnes_topic != TOPIC:
-        client.subscribe(colonnes_topic, qos=PUBLISH_QOS)
+    # Nur das Topic deines Druckers abonnieren
+    printer_topic = os.getenv("PRINT_TOPIC", "Prn20B1B50C2199")
+    client.subscribe(printer_topic, qos=PUBLISH_QOS)
 
     client.loop_start()
-    log(f"✅ MQTT connected & subscribed to {TOPIC}" + (f" and {colonnes_topic}" if colonnes_topic != TOPIC else ""))
+    log(f"✅ MQTT connected & subscribed to {printer_topic}")
 
-# WICHTIG: jetzt erst aufrufen, nachdem log/_handle_incoming_mqtt definiert sind
+# Wichtig: erst hier aufrufen
 init_mqtt()
-
 # ----------------- Zeit/Format -----------------
 
 def now_str(fmt: str = "%d.%m.%Y %H:%M") -> str:
