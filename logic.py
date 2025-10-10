@@ -51,6 +51,7 @@ client = None
 def log(*a):
     print("[printer]", *a, file=sys.stdout, flush=True)
 
+
 def _handle_incoming_mqtt(_client, _userdata, msg):
     # Import hier, um Circular Import zu vermeiden
     from queue_print import enqueue_base64_png
@@ -80,6 +81,7 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         and "ticket_id" in payload
     )
 
+    # 🔹 Colonnes-Tickets (ohne ticket_id)
     if is_colonnes:
         b64 = payload["data_base64"]
         cut = int(payload.get("cut_paper", 1))
@@ -92,9 +94,8 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         log(f"📥 Colonnes-Ticket in Queue gelegt (len={len(b64)}).")
         return
 
-if is_web_ticket:
-    # Wenn es vom Colonnes-Topic kommt, trotzdem drucken
-    if msg.topic == "Prn20B1B50C2199":
+    # 🔹 Colonnes-Web-Tickets (haben ticket_id, kommen aber vom Drucker-Topic)
+    if is_web_ticket and msg.topic == "Prn20B1B50C2199":
         b64 = payload["data_base64"]
         cut = int(payload.get("cut_paper", 1))
         meta = {
@@ -102,14 +103,18 @@ if is_web_ticket:
             "paper_width_mm": payload.get("paper_width_mm", 0),
             "paper_height_mm": payload.get("paper_height_mm", 0),
         }
-        from queue_print import enqueue_base64_png
         enqueue_base64_png(b64, cut_paper=cut, meta=meta)
         log(f"📥 Colonnes-Web-Ticket in Queue gelegt (len={len(b64)}).")
         return
-    else:
-        # Web-Tickets deiner eigenen Web-App weiter ignorieren
+
+    # 🔹 Eigene Web-Tickets deiner App (werden ignoriert)
+    if is_web_ticket:
         log("📨 Eigenes Web-Ticket empfangen (ignoriert).")
         return
+
+    # 🔹 Unbekannte Struktur
+    log("⚠️ Unbekanntes MQTT-Payload empfangen:", str(payload)[:200])
+
 
 def init_mqtt():
     global client
@@ -130,8 +135,10 @@ def init_mqtt():
     client.loop_start()
     log(f"✅ MQTT connected & subscribed to {printer_topic}")
 
+
 # Wichtig: erst hier aufrufen
 init_mqtt()
+
 # ----------------- Zeit/Format -----------------
 
 def now_str(fmt: str = "%d.%m.%Y %H:%M") -> str:
