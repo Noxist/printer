@@ -51,13 +51,17 @@ client = None
 def log(*a):
     print("[printer]", *a, file=sys.stdout, flush=True)
 
-
 def _handle_incoming_mqtt(_client, _userdata, msg):
     from queue_print import enqueue_base64_png
+    from PIL import Image
+    import io, base64, os, json
+
     # Nur dein INBOX-Topic verarbeiten (nicht das Drucker-Topic!)
     if msg.topic != INBOX_TOPIC:
         log(f"⚠️ Ignoriere fremdes Topic: {msg.topic}")
         return
+
+    # Payload dekodieren
     try:
         payload = json.loads(msg.payload.decode("utf-8", errors="ignore"))
     except Exception as e:
@@ -69,45 +73,93 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         log("🔁 Eigene MQTT-Nachricht erkannt – wird ignoriert.")
         return
 
-    # 🔹 Colonnes-Tickets (kommen ohne ticket_id)
+    # --------------------------------------------
+    # 🔹 Colonnes-Tickets (ohne ticket_id)
+    # --------------------------------------------
     if (
         isinstance(payload, dict)
         and payload.get("data_type") == "png"
         and "data_base64" in payload
         and "ticket_id" not in payload
     ):
-        b64 = payload["data_base64"]
-        cut = int(payload.get("cut_paper", 1))
-        meta = {
-            "source": "colonnes",
-            "paper_width_mm": payload.get("paper_width_mm", 0),
-            "paper_height_mm": payload.get("paper_height_mm", 0),
-        }
-        enqueue_base64_png(b64, cut_paper=cut, meta=meta)
-        log(f"📥 Colonnes-Ticket in Queue gelegt (len={len(b64)}).")
+        try:
+            b64 = payload["data_base64"]
+            cut = int(payload.get("cut_paper", 1))
+            meta = {
+                "source": "colonnes",
+                "paper_width_mm": payload.get("paper_width_mm", 0),
+                "paper_height_mm": payload.get("paper_height_mm", 0),
+            }
+
+            # 🧩 PNG aus Base64 dekodieren
+            img = Image.open(io.BytesIO(base64.b64decode(b64)))
+
+            # 🧠 Automatisch auf Druckerbreite skalieren
+            target_width = int(os.getenv("PRINT_WIDTH_PX", 576))
+            w, h = img.size
+            if w != target_width:
+                scale = target_width / w
+                new_h = int(h * scale)
+                img = img.resize((target_width, new_h), Image.LANCZOS)
+                log(f"🔍 Colonnes PNG rescaled from {w}px → {target_width}px (scale={scale:.2f})")
+
+            # 🌀 Wieder zurück in Base64
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+            enqueue_base64_png(b64, cut_paper=cut, meta=meta)
+            log(f"📥 Colonnes-Ticket in Queue gelegt (len={len(b64)}).")
+
+        except Exception as e:
+            log(f"❌ Fehler beim Verarbeiten von Colonnes-Ticket: {e}")
         return
 
-    # 🔹 Colonnes-Web-Tickets (haben ticket_id, aber kommen von Colonnes)
-    # 🔹 Colonnes-Web-Tickets (haben ticket_id, kommen aber über dein INBOX_TOPIC)
+    # --------------------------------------------
+    # 🔹 Colonnes-Web-Tickets (haben ticket_id)
+    # --------------------------------------------
     if (
         isinstance(payload, dict)
         and payload.get("data_type") == "png"
         and "data_base64" in payload
         and "ticket_id" in payload
     ):
-        b64 = payload["data_base64"]
-        cut = int(payload.get("cut_paper", 1))
-        meta = {
-            "source": "colonnes_web",
-            "paper_width_mm": payload.get("paper_width_mm", 0),
-            "paper_height_mm": payload.get("paper_height_mm", 0),
-        }
-        enqueue_base64_png(b64, cut_paper=cut, meta=meta)
-        log(f"📥 Colonnes-Web-Ticket in Queue gelegt (len={len(b64)}).")
+        try:
+            b64 = payload["data_base64"]
+            cut = int(payload.get("cut_paper", 1))
+            meta = {
+                "source": "colonnes_web",
+                "paper_width_mm": payload.get("paper_width_mm", 0),
+                "paper_height_mm": payload.get("paper_height_mm", 0),
+            }
+
+            # 🧩 PNG aus Base64 dekodieren
+            img = Image.open(io.BytesIO(base64.b64decode(b64)))
+
+            # 🧠 Automatisch auf Druckerbreite skalieren
+            target_width = int(os.getenv("PRINT_WIDTH_PX", 576))
+            w, h = img.size
+            if w != target_width:
+                scale = target_width / w
+                new_h = int(h * scale)
+                img = img.resize((target_width, new_h), Image.LANCZOS)
+                log(f"🔍 Colonnes-Web PNG rescaled from {w}px → {target_width}px (scale={scale:.2f})")
+
+            # 🌀 Wieder zurück in Base64
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+            enqueue_base64_png(b64, cut_paper=cut, meta=meta)
+            log(f"📥 Colonnes-Web-Ticket in Queue gelegt (len={len(b64)}).")
+
+        except Exception as e:
+            log(f"❌ Fehler beim Verarbeiten von Colonnes-Web-Ticket: {e}")
         return
 
-
-    # 🔹 Eigene Web-Tickets deiner App (mit ticket_id, aber ohne Colonnes)
+    # --------------------------------------------
+    # 🔹 Eigene Web-Tickets deiner App
+    # --------------------------------------------
     if (
         isinstance(payload, dict)
         and payload.get("data_type") == "png"
@@ -117,9 +169,10 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         log("📨 Eigenes Web-Ticket empfangen (ignoriert).")
         return
 
+    # --------------------------------------------
     # 🔹 Unbekanntes Format
+    # --------------------------------------------
     log("⚠️ Unbekanntes MQTT-Payload empfangen:", str(payload)[:200])
-
 
 def init_mqtt():
     """
