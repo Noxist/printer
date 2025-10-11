@@ -8,30 +8,15 @@ from pydantic import BaseModel
 from PIL import Image
 
 from queue_print import start_background_flusher
-from routes_sources import router as sources_router  # modularer Router
+from routes_sources import router as sources_router
 
 from logic import (
-    log,
-    now_str,
-    pil_to_base64_png,
-    mqtt_publish_image_base64,
-    render_receipt,
-    render_image_with_headers,
-    ReceiptCfg,
-    check_api_key,
-    require_ui_auth,
-    issue_cookie,
-    ui_auth_state,
-    cfg_get,
-    SETTINGS,
-    SET_KEYS,
-    _save_settings,
-    GUESTS,
-    guest_consume_or_error,
-    _guest_check_len_ok,
-    GUEST_MAX_CHARS,
+    log, now_str, pil_to_base64_png, mqtt_publish_image_base64,
+    render_receipt, render_image_with_headers, ReceiptCfg,
+    check_api_key, require_ui_auth, issue_cookie, ui_auth_state,
+    cfg_get, SETTINGS, SET_KEYS, _save_settings,
+    GUESTS, guest_consume_or_error, _guest_check_len_ok, GUEST_MAX_CHARS,
 )
-
 from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
 
 # --- App & Middleware ---------------------------------------------------------
@@ -39,6 +24,7 @@ app = FastAPI(title="Printer API")
 
 @app.on_event("startup")
 async def _start_queue_worker():
+    """Startet beim App-Start den Druck-Queue-Hintergrundthread."""
     start_background_flusher()
 
 app.add_middleware(
@@ -50,6 +36,7 @@ app.add_middleware(
 
 # Modularer Quellen-Router
 app.include_router(sources_router)
+
 
 PRINT_WIDTH_PX = int(cfg_get("PRINT_WIDTH_PX", 576))
 
