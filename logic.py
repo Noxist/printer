@@ -659,3 +659,43 @@ def render_and_publish_text(title: str, body_lines: List[str], add_time: bool = 
     img = render_receipt(title, body_lines, add_time, PRINT_WIDTH_PX, cfg, sender_name=sender_name)
     b64 = pil_to_base64_png(img)
     mqtt_publish_image_base64(b64, cut_paper=cut_paper)
+# ----------------- Direkter WLAN-Druck (optional) -----------------
+try:
+    from escpos.printer import Network
+except ImportError:
+    Network = None
+
+def _get_printer():
+    """Stellt eine Verbindung zum ESC/POS-Drucker her (z. B. Epson TM-m30)."""
+    if not Network:
+        print("[printer] ⚠️ python-escpos nicht installiert – kein Direktdruck möglich.")
+        return None
+    ip = os.getenv("PRINTER_IP", "192.168.1.132")  # deine Drucker-IP
+    try:
+        p = Network(ip, port=9100, timeout=5)
+        print(f"[printer] ✅ Netzwerkdrucker verbunden: {ip}")
+        return p
+    except Exception as e:
+        print(f"[printer] ⚠️ Netzwerkdrucker nicht erreichbar ({ip}): {e}")
+        return None
+
+
+def print_base64_png_direct(b64_png: str, cut_paper: bool = True):
+    """Druckt ein gespeichertes Base64-PNG direkt über Netzwerkdrucker."""
+    p = _get_printer()
+    if not p:
+        print("[printer] ⚠️ Kein Drucker gefunden – Ticket bleibt in Queue.")
+        return False
+    try:
+        from PIL import Image
+        import base64, io
+        img_bytes = base64.b64decode(b64_png)
+        img = Image.open(io.BytesIO(img_bytes))
+        p.image(img, high_density_vertical=True, high_density_horizontal=True)
+        if cut_paper:
+            p.cut()
+        print("[printer] 🖨️ Direktdruck erfolgreich abgeschlossen.")
+        return True
+    except Exception as e:
+        print(f"[printer] ❌ Direkter Druck fehlgeschlagen: {e}")
+        return False
