@@ -16,11 +16,10 @@ _thread: Optional[threading.Thread] = None
 # Drucker initialisieren (USB-Beispiel)
 def _get_printer():
     try:
-        # Passe diese Werte an deinen Drucker an!
-        # idVendor und idProduct kannst du mit `lsusb` (Linux) prüfen
-        return Usb(0x04b8, 0x0202, 0)  # Beispiel: Epson TM-T20
+        # IP aus deinem Screenshot: 192.168.1.132
+        return Network("192.168.1.132")
     except Exception as e:
-        print(f"[printer] ⚠️ Drucker nicht erreichbar: {e}")
+        print(f"[printer] ⚠️ Netzwerkdrucker nicht erreichbar: {e}")
         return None
 
 def _ensure_dir():
