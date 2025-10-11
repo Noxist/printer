@@ -1,25 +1,32 @@
 # queue_print.py
-import os, json, time, threading, traceback
+import os, json, time, threading, traceback, base64, io
 from typing import Optional, Dict, Any
 from pathlib import Path
-
-from logic import mqtt_publish_image_base64  # bestehend
+from PIL import Image
+from escpos.printer import Usb  # oder Network/Serial, je nach deinem Setup
 
 # Schreibbarer Default:
-# - Render: /tmp ist immer beschreibbar (ephemeral)
-# - Kann per ENV ueberschrieben werden (z. B. wenn du einen Persistent Disk Mount nutzt)
 PRINT_QUEUE_DIR = os.getenv("PRINT_QUEUE_DIR", "/tmp/print-queue")
 QUEUE_DIR = Path(PRINT_QUEUE_DIR)
 
-SLEEP_SECONDS = int(os.getenv("PRINT_QUEUE_POLL", "20"))  # alle 20s versuchen
+SLEEP_SECONDS = int(os.getenv("PRINT_QUEUE_POLL", "20"))
 _running = False
 _thread: Optional[threading.Thread] = None
+
+# Drucker initialisieren (USB-Beispiel)
+def _get_printer():
+    try:
+        # Passe diese Werte an deinen Drucker an!
+        # idVendor und idProduct kannst du mit `lsusb` (Linux) prüfen
+        return Usb(0x04b8, 0x0202, 0)  # Beispiel: Epson TM-T20
+    except Exception as e:
+        print(f"[printer] ⚠️ Drucker nicht erreichbar: {e}")
+        return None
 
 def _ensure_dir():
     try:
         QUEUE_DIR.mkdir(parents=True, exist_ok=True)
     except Exception:
-        # Falls das Verzeichnis nicht angelegt werden kann, nicht crashen – spaeter erneut versuchen
         pass
 
 def _job_path(ts: float) -> Path:
@@ -33,6 +40,7 @@ def enqueue_base64_png(b64png: str, cut_paper: int = 1, meta: Optional[Dict[str,
         p = _job_path(payload["ts"])
         with open(p, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False)
+        print(f"[printer] 💾 Ticket gespeichert: {p.name}")
         return p
     except Exception:
         traceback.print_exc()
@@ -45,14 +53,29 @@ def _dequeue_one() -> Optional[Path]:
     except Exception:
         return None
 
-def _try_publish(path: Path) -> bool:
+def _print_job(path: Path) -> bool:
     try:
         with open(path, "r", encoding="utf-8") as f:
             job = json.load(f)
-        mqtt_publish_image_base64(job["b64"], cut_paper=int(job.get("cut", 1)))
+        b64 = job["b64"]
+        img_bytes = base64.b64decode(b64)
+        img = Image.open(io.BytesIO(img_bytes))
+
+        printer = _get_printer()
+        if not printer:
+            print("[printer] ❌ Kein Drucker gefunden – Abbruch.")
+            return False
+
+        printer.image(img)  # Bild drucken
+        if job.get("cut", 1):
+            printer.cut()
+        printer.close()
+
+        print(f"[printer] 🖨️ Ticket {path.name} erfolgreich gedruckt.")
         path.unlink(missing_ok=True)
         return True
-    except Exception:
+    except Exception as e:
+        print(f"[printer] ⚠️ Fehler beim Drucken: {e}")
         traceback.print_exc()
         return False
 
@@ -63,7 +86,7 @@ def flush_once(max_n: int = 10) -> int:
         p = _dequeue_one()
         if not p:
             break
-        if not _try_publish(p):
+        if not _print_job(p):
             break
         n += 1
     return n
@@ -79,7 +102,6 @@ def _loop():
         time.sleep(SLEEP_SECONDS if flushed == 0 else 1)
 
 def start_background_flusher():
-    """ Beim App-Startup aufrufen """
     global _running, _thread
     if _running:
         return
@@ -87,6 +109,7 @@ def start_background_flusher():
     _running = True
     _thread = threading.Thread(target=_loop, name="print-queue-flusher", daemon=True)
     _thread.start()
+    print("[printer] 🌀 Background-Flusher gestartet.")
 
 def stop_background_flusher():
     global _running
