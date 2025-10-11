@@ -74,7 +74,8 @@ async def print_job(p: PrintPayload, request: Request):
     cfg = ReceiptCfg()
     img = render_receipt(p.title, p.lines, add_time=p.add_datetime, width_px=PRINT_WIDTH_PX, cfg=cfg)
     b64 = pil_to_base64_png(img)
-    mqtt_publish_image_base64(b64, cut_paper=(1 if p.cut else 0))
+    from queue_print import enqueue_base64_png
+    enqueue_base64_png(b64, cut_paper=(1 if p.cut else 0), meta={"source": "api"})
     return {"ok": True}
 
 
@@ -91,7 +92,8 @@ async def api_print_template(p: PrintPayload, request: Request):
     cfg = ReceiptCfg()
     img = render_receipt(p.title, p.lines, add_time=p.add_datetime, width_px=PRINT_WIDTH_PX, cfg=cfg)
     b64 = pil_to_base64_png(img)
-    mqtt_publish_image_base64(b64, cut_paper=(1 if p.cut else 0))
+    from queue_print import enqueue_base64_png
+    enqueue_base64_png(b64, cut_paper=(1 if p.cut else 0), meta={"source": "api"})
     return {"ok": True}
 
 
@@ -108,7 +110,8 @@ async def api_print_raw(p: RawPayload, request: Request):
     lines = (p.text + (f"\n{now_str('%Y-%m-%d %H:%M')}" if p.add_datetime else "")).splitlines()
     img = render_receipt("", lines, add_time=False, width_px=PRINT_WIDTH_PX, cfg=cfg)
     b64 = pil_to_base64_png(img)
-    mqtt_publish_image_base64(b64, cut_paper=1)
+    from queue_print import enqueue_base64_png
+    enqueue_base64_png(b64, cut_paper=1, meta={"source": "ui"})  # oder "api"/"guest"
     return {"ok": True}
 
 
@@ -135,7 +138,8 @@ async def api_print_image(
         subtitle=img_subtitle
     )
     b64 = pil_to_base64_png(src)
-    mqtt_publish_image_base64(b64, cut_paper=1)
+    from queue_print import enqueue_base64_png
+    enqueue_base64_png(b64, cut_paper=1, meta={"source": "ui"})  # oder "api"/"guest"
     return {"ok": True}
 
 # ------------------------------- UI: Simple Frontend --------------------------
@@ -220,7 +224,9 @@ async def ui_print_template(
         cfg = ReceiptCfg()
         img = render_receipt(title_s, body_lines, add_time=add_dt, width_px=PRINT_WIDTH_PX, cfg=cfg)
         b64 = pil_to_base64_png(img)
-        mqtt_publish_image_base64(b64, cut_paper=1)
+        from queue_print import enqueue_base64_png
+        enqueue_base64_png(b64, cut_paper=1, meta={"source": "ui"})  # oder "api"/"guest"
+
         resp = RedirectResponse("/ui#tpl", status_code=303)
         if set_cookie:
             issue_cookie(resp)
@@ -255,7 +261,8 @@ async def ui_print_raw(
         lines = (text + (f"\n{now_str('%Y-%m-%d %H:%M')}" if add_dt else "")).splitlines()
         img = render_receipt("", lines, add_time=False, width_px=PRINT_WIDTH_PX, cfg=cfg)
         b64 = pil_to_base64_png(img)
-        mqtt_publish_image_base64(b64, cut_paper=1)
+        from queue_print import enqueue_base64_png
+        enqueue_base64_png(b64, cut_paper=1, meta={"source": "ui"})  # oder "api"/"guest"
         resp = RedirectResponse("/ui#raw", status_code=303)
         if set_cookie:
             issue_cookie(resp)
@@ -283,7 +290,8 @@ async def ui_print_image(
         cfg = ReceiptCfg()
         composed = render_image_with_headers(src, PRINT_WIDTH_PX, cfg, title=img_title, subtitle=img_subtitle)
         b64 = pil_to_base64_png(composed)
-        mqtt_publish_image_base64(b64, cut_paper=1)
+        from queue_print import enqueue_base64_png
+        enqueue_base64_png(b64, cut_paper=1, meta={"source": "ui"})  # oder "api"/"guest"
         resp = RedirectResponse("/ui#img", status_code=303)
         if set_cookie:
             issue_cookie(resp)
@@ -341,7 +349,8 @@ async def guest_print_template(
         sender_name=tok["name"]
     )
     b64 = pil_to_base64_png(img)
-    mqtt_publish_image_base64(b64, cut_paper=1)
+    from queue_print import enqueue_base64_png
+    enqueue_base64_png(b64, cut_paper=1, meta={"source": "ui"})  # oder "api"/"guest"
     return RedirectResponse(f"/guest/{token}#tpl", status_code=303)
 
 @app.post("/guest/{token}/print/raw")
@@ -365,7 +374,8 @@ async def guest_print_raw(
     lines = full.splitlines()
     img = render_receipt("", lines, add_time=False, width_px=PRINT_WIDTH_PX, cfg=cfg, sender_name=tok["name"])
     b64 = pil_to_base64_png(img)
-    mqtt_publish_image_base64(b64, cut_paper=1)
+    from queue_print import enqueue_base64_png
+    enqueue_base64_png(b64, cut_paper=1, meta={"source": "ui"})  # oder "api"/"guest"
     return RedirectResponse(f"/guest/{token}#raw", status_code=303)
 
 @app.post("/guest/{token}/print/image")
@@ -390,7 +400,8 @@ async def guest_print_image(
         sender_name=tok["name"]
     )
     b64 = pil_to_base64_png(composed)
-    mqtt_publish_image_base64(b64, cut_paper=1)
+    from queue_print import enqueue_base64_png
+    enqueue_base64_png(b64, cut_paper=1, meta={"source": "ui"})  # oder "api"/"guest"
     return RedirectResponse(f"/guest/{token}#img", status_code=303)
 
 # ------------------------------- Settings UI ----------------------------------
@@ -439,7 +450,8 @@ def ui_settings_test(request: Request):
     sample_lines = ["Read - 10 Min", "Drink water", "Plan – 10 Min", "Exercise – 20 Min"]
     img = render_receipt("TEST", sample_lines, add_time=True, width_px=PRINT_WIDTH_PX, cfg=cfg)
     b64 = pil_to_base64_png(img)
-    mqtt_publish_image_base64(b64, cut_paper=1)
+    from queue_print import enqueue_base64_png
+    enqueue_base64_png(b64, cut_paper=1, meta={"source": "ui"})  # oder "api"/"guest"
     return html_page("Settings", "<div class='card'>Testdruck gesendet.</div>")
 
 # ------------------------------- Guest Admin UI -------------------------------
