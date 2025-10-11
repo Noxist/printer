@@ -15,7 +15,7 @@ from guest_tokens import get_guest_db
 
 # ----------------- Konfiguration -----------------
 
-APP_API_KEY = os.getenv("API_KEY", "change_me")
+APP_API_KEY = os.getenv("APP_API_KEY", "change_me")
 GUEST_MAX_CHARS = int(os.getenv("GUEST_MAX_CHARS", "10000"))
 
 MQTT_HOST = os.getenv("MQTT_HOST")
@@ -54,12 +54,10 @@ def log(*a):
 
 def _handle_incoming_mqtt(_client, _userdata, msg):
     from queue_print import enqueue_base64_png
-
-    # Nur auf dein Drucker-Topic reagieren
-    if msg.topic != "Prn20B1B50C2199":
+    # Nur dein INBOX-Topic verarbeiten (nicht das Drucker-Topic!)
+    if msg.topic != INBOX_TOPIC:
         log(f"⚠️ Ignoriere fremdes Topic: {msg.topic}")
         return
-
     try:
         payload = json.loads(msg.payload.decode("utf-8", errors="ignore"))
     except Exception as e:
@@ -90,12 +88,12 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         return
 
     # 🔹 Colonnes-Web-Tickets (haben ticket_id, aber kommen von Colonnes)
+    # 🔹 Colonnes-Web-Tickets (haben ticket_id, kommen aber über dein INBOX_TOPIC)
     if (
         isinstance(payload, dict)
         and payload.get("data_type") == "png"
         and "data_base64" in payload
         and "ticket_id" in payload
-        and msg.topic == "Prn20B1B50C2199"
     ):
         b64 = payload["data_base64"]
         cut = int(payload.get("cut_paper", 1))
@@ -107,6 +105,7 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         enqueue_base64_png(b64, cut_paper=cut, meta=meta)
         log(f"📥 Colonnes-Web-Ticket in Queue gelegt (len={len(b64)}).")
         return
+
 
     # 🔹 Eigene Web-Tickets deiner App (mit ticket_id, aber ohne Colonnes)
     if (
@@ -123,9 +122,21 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
 
 
 def init_mqtt():
-    global client
+    """
+    Initialisiert die MQTT-Verbindung.
+    - Lauscht nur auf dem INBOX_TOPIC (z. B. 'todos/print')
+    - Sendet später an PRINTER_TOPIC (z. B. 'Prn20B1B50C2199')
+    """
+    global client, INBOX_TOPIC, PRINTER_TOPIC
+
     import paho.mqtt.client as mqtt
+
+    # Umgebungsvariablen laden oder Default verwenden
+    INBOX_TOPIC   = os.getenv("INBOX_TOPIC", "todos/print")        # Colonnes → hierhin
+    PRINTER_TOPIC = os.getenv("PRINTER_TOPIC", "Prn20B1B50C2199")  # Dein Drucker-Topic
+
     client = mqtt.Client()
+
     if MQTT_TLS:
         client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
     if MQTT_USER or MQTT_PASS:
@@ -133,14 +144,14 @@ def init_mqtt():
 
     client.on_message = _handle_incoming_mqtt
 
+    # Verbindung aufbauen
     client.connect(MQTT_HOST, MQTT_PORT, 60)
 
-    # Nur dein eigenes Drucker-Topic abonnieren
-    printer_topic = os.getenv("PRINT_TOPIC", "Prn20B1B50C2199")
-    client.subscribe(printer_topic, qos=PUBLISH_QOS)
+    # Nur das Inbox-Topic abonnieren (nicht dein Drucker-Topic!)
+    client.subscribe(INBOX_TOPIC, qos=PUBLISH_QOS)
 
     client.loop_start()
-    log(f"✅ MQTT connected & subscribed to {printer_topic}")
+    log(f"✅ MQTT connected & subscribed to {INBOX_TOPIC}")
 
 
 # Wichtig: erst hier aufrufen
@@ -386,13 +397,13 @@ def mqtt_publish_image_base64(b64_png: str, cut_paper: int = 1,
         "data_type": "png",
         "data_base64": b64_png,
         "paper_type": 0,
-           "paper_width_mm": paper_width_mm,
+        "paper_width_mm": paper_width_mm,
         "paper_height_mm": paper_height_mm,
         "cut_paper": cut_paper,
-        "source": "printer"  # 🔹 Kennzeichnung: vom Drucker selbst gesendet
+        "source": "printer"
     }
-    log(f"MQTT publish → topic={TOPIC} qos={PUBLISH_QOS} bytes={len(b64_png)}")
-    client.publish(TOPIC, json.dumps(payload), qos=PUBLISH_QOS, retain=False)
+    log(f"MQTT publish → topic={PRINTER_TOPIC} qos={PUBLISH_QOS} bytes={len(b64_png)}")
+    client.publish(PRINTER_TOPIC, json.dumps(payload), qos=PUBLISH_QOS, retain=False)
 
 # ----------------- Receipt Config -----------------
 
