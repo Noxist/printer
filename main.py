@@ -581,3 +581,44 @@ async def debug_last():
     if os.path.exists(path):
         return FileResponse(path, media_type="image/png")
     return {"error": "no debug file found"}
+from fastapi.responses import JSONResponse
+import os, json, time
+from queue_print import PRINT_QUEUE_DIR
+# ------------------------------- Que ----------------------------------------
+@app.get("/queue/list")
+async def list_queue():
+    """Listet alle gespeicherten Druck-Jobs auf."""
+    try:
+        files = sorted([f for f in os.listdir(PRINT_QUEUE_DIR) if f.endswith(".json")])
+        result = []
+        for f in files:
+            path = os.path.join(PRINT_QUEUE_DIR, f)
+            size = os.path.getsize(path)
+            ts = os.path.getmtime(path)
+            with open(path, "r", encoding="utf-8") as fh:
+                try:
+                    data = json.load(fh)
+                    meta = data.get("meta", {})
+                except Exception:
+                    meta = {}
+            result.append({
+                "file": f,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)),
+                "size_bytes": size,
+                "meta": meta
+            })
+        return JSONResponse({"count": len(result), "jobs": result})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/queue/clear")
+async def clear_queue():
+    """Löscht alle gespeicherten Druck-Jobs."""
+    import shutil
+    try:
+        shutil.rmtree(PRINT_QUEUE_DIR, ignore_errors=True)
+        os.makedirs(PRINT_QUEUE_DIR, exist_ok=True)
+        print("[queue] 🧹 Queue manuell geleert.")
+        return {"status": "cleared"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
