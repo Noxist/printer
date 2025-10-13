@@ -622,3 +622,5 @@ async def clear_queue():
         return {"status": "cleared"}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
+from queue_print import stop_background_flusher
+stop_background_flusher()
