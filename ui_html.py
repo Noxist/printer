@@ -225,15 +225,17 @@ document.addEventListener("DOMContentLoaded",()=>{
   }
 });
 
-// Hide password UI if not required
+// Hide password UI if not required or when in guest mode
 const AUTH_REQUIRED=String("{{AUTH_REQUIRED}}").toLowerCase().trim()==="true";
+const IS_GUEST_VIEW=location.pathname.startsWith("/guest/");
+const SHOULD_SHOW_AUTH=AUTH_REQUIRED && !IS_GUEST_VIEW;
 ["auth-wrap","auth-wrap2","auth-wrap3"].forEach(id=>{
   const el=document.getElementById(id);
-  if(el) el.classList.toggle("hidden", !AUTH_REQUIRED);
+  if(el) el.classList.toggle("hidden", !SHOULD_SHOW_AUTH);
 });
 ["remember-wrap","remember-wrap2","remember-wrap3"].forEach(id=>{
   const el=document.getElementById(id);
-  if(el) el.classList.toggle("hidden", !AUTH_REQUIRED);
+  if(el) el.classList.toggle("hidden", !SHOULD_SHOW_AUTH);
 });
 
 // --- Drag & Drop Upload ---
@@ -264,7 +266,7 @@ if(dropZone){
 }
 
 // Hide Guests/Settings if guest UI
-if(location.pathname.startsWith("/guest/")){
+if(IS_GUEST_VIEW){
   document.querySelectorAll(".guest-hide").forEach(el=>el.style.display="none");
 }
 </script>
