@@ -18,14 +18,24 @@ from logic import (
     GUESTS, guest_consume_or_error, _guest_check_len_ok, GUEST_MAX_CHARS,
 )
 from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
+# --- Queue-Thread-Initialisierung --------------------------------------------
+from queue_print import start_background_flusher, stop_background_flusher, PRINT_QUEUE_DIR
+import shutil, os, json, time
+from fastapi.responses import JSONResponse
+
+print("[main] 🧩 Starte Printer-App …")
+
+try:
+    stop_background_flusher()
+    print("[main] 🛑 Alte Queue-Threads gestoppt.")
+except Exception as e:
+    print("[main] ⚠️ Konnte alten Thread nicht stoppen:", e)
+
+start_background_flusher()
+print("[main] ✅ Druck-Queue frisch gestartet (nur eine Instanz aktiv).")
 
 # --- App & Middleware ---------------------------------------------------------
 app = FastAPI(title="Printer API")
-
-@app.on_event("startup")
-async def _start_queue_worker():
-    """Startet beim App-Start den Druck-Queue-Hintergrundthread."""
-    start_background_flusher()
 
 app.add_middleware(
     CORSMiddleware,
@@ -622,5 +632,26 @@ async def clear_queue():
         return {"status": "cleared"}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
-from queue_print import stop_background_flusher
-stop_background_flusher()
+
+@app.get("/queue/status")
+async def queue_status():
+    """Zeigt, ob der Hintergrund-Thread läuft und wie viele Jobs es gibt."""
+    try:
+        from queue_print import _running
+        files = [f for f in os.listdir(PRINT_QUEUE_DIR) if f.endswith(".json")]
+        return {"running": _running, "job_count": len(files), "files": files}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/queue/reset")
+async def queue_reset():
+    """Stoppt Thread + leert Queue komplett + startet frisch."""
+    try:
+        stop_background_flusher()
+        shutil.rmtree(PRINT_QUEUE_DIR, ignore_errors=True)
+        os.makedirs(PRINT_QUEUE_DIR, exist_ok=True)
+        start_background_flusher()
+        print("[queue] ♻️ Queue komplett zurückgesetzt.")
+        return {"status": "reset"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
