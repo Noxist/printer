@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse, FileResponse
 from pydantic import BaseModel
 from PIL import Image
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from queue_print import start_background_flusher
 from routes_sources import router as sources_router
@@ -49,6 +51,19 @@ app.include_router(sources_router)
 
 
 PRINT_WIDTH_PX = int(cfg_get("PRINT_WIDTH_PX", 576))
+
+# --- Static files & favicon -----------------------------------------
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Serve favicon.ico from /static directory if it exists."""
+    path = os.path.join(static_dir, "favicon.ico")
+    if os.path.exists(path):
+        return FileResponse(path)
+    return FileResponse(os.path.join(static_dir, "favicon.png"))  # Fallback
 
 # ------------------------------- Models ---------------------------------------
 class PrintPayload(BaseModel):
