@@ -122,7 +122,6 @@ def ok():
 @app.post("/print")
 async def print_job(p: PrintPayload, request: Request):
     check_api_key(request)
-    # Check empty
     if (not p.title.strip()) and (not any(line.strip() for line in p.lines)):
         log("⚠️ Leerer PrintJob – wird übersprungen.")
         return {"ok": False, "msg": "Empty print job ignored."}
@@ -133,7 +132,6 @@ async def print_job(p: PrintPayload, request: Request):
 @app.post("/api/print/template")
 async def api_print_template(p: PrintPayload, request: Request):
     check_api_key(request)
-    # Block default empty template
     if (not p.title.strip() or p.title.strip().lower() == "tasks") and not any(line.strip() for line in p.lines):
         log("⚠️ Leeres Template oder Defaulttitel – wird nicht gedruckt.")
         return {"ok": False, "msg": "Empty or default template ignored."}
@@ -149,7 +147,6 @@ async def api_print_raw(p: RawPayload, request: Request):
         return {"ok": False, "msg": "Empty raw print ignored."}
 
     lines = (p.text + (f"\n{now_str('%Y-%m-%d %H:%M')}" if p.add_datetime else "")).splitlines()
-    # Raw print usually has no header title, so title=""
     _print_text_content("", lines, False, True, "api") 
     return {"ok": True}
 
@@ -181,12 +178,10 @@ def ui(request: Request):
         is_authed = False
 
     # Logic: Show auth fields if password is set AND user is NOT authed
-    auth_required = "true" if (pass_configured and not is_authed) else "false"
+    auth_required_bool = (pass_configured and not is_authed)
     
     # Logic: Show logout only if password is set AND user IS authed
     show_logout = is_authed and pass_configured
-
-    html = HTML_UI.replace("{{AUTH_REQUIRED}}", auth_required)
 
     # No-Cache headers
     headers = {
@@ -196,10 +191,13 @@ def ui(request: Request):
     }
 
     if request.headers.get("X-Partial") == "true":
-        return HTMLResponse(html, headers=headers)
+        # For partial updates, we still need to handle replacement if we were doing it on HTML_UI
+        # But HTML_UI no longer has placeholder. Partial updates usually just reload the body.
+        # This might be slightly redundant but keeps logic simple.
+        return HTMLResponse(HTML_UI, headers=headers)
 
-    # Pass show_logout to updated html_page
-    page = html_page("Receipt Printer", html, show_logout=show_logout)
+    # Pass flags to html_page
+    page = html_page("Receipt Printer", HTML_UI, show_logout=show_logout, auth_required=auth_required_bool)
     page.headers.update(headers)
     return page
 
@@ -236,7 +234,7 @@ async def ui_print_template(
     if set_cookie: issue_cookie(resp)
 
     if is_default_title and not has_body:
-        return resp # Do nothing
+        return resp
 
     try:
         _print_text_content(title_s, body_lines, add_dt, True, "ui")
@@ -306,11 +304,10 @@ def guest_ui(token: str, request: Request):
     remaining = GUESTS.remaining_today(token)
     limit_hint = f"<div class='card'>Maximum text length: {GUEST_MAX_CHARS} characters per print.</div>"
     
-    # Update URLs for guest mode
     content = (
         f"<div class='card'>Guest: <b>{info['name']}</b> · left today: {remaining}</div>"
         + limit_hint
-        + guest_ui_html("false") # Guests don't see auth fields
+        + guest_ui_html() # Use raw tabs without replace
     )
     content = content.replace('/ui/print/template', f'/guest/{token}/print/template')
     content = content.replace('/ui/print/raw', f'/guest/{token}/print/raw')
@@ -319,8 +316,8 @@ def guest_ui(token: str, request: Request):
     if request.headers.get("X-Partial") == "true":
         return HTMLResponse(content)
     
-    # Guests don't need logout
-    return html_page("Guest print", content, show_logout=False)
+    # Guests don't need logout, and never need auth fields
+    return html_page("Guest print", content, show_logout=False, auth_required=False)
 
 @app.post("/guest/{token}/print/template")
 async def guest_print_template(
@@ -361,7 +358,6 @@ async def guest_print_raw(
     if not tok: return html_page("Guest print", "<div class='card'>Limit reached or invalid link.</div>")
 
     lines = full.splitlines()
-    # Raw print maps to empty title
     _print_text_content("", lines, False, True, "guest", sender=tok["name"])
     return RedirectResponse(f"/guest/{token}#raw", status_code=303)
 
@@ -391,8 +387,8 @@ def ui_settings(request: Request):
 
     if request.headers.get("X-Partial") == "true":
         return HTMLResponse(content)
-    # Settings is only for authed users, so we can show logout
-    return html_page("Settings", content, show_logout=True)
+    
+    return html_page("Settings", content, show_logout=True, auth_required=False)
 
 @app.post("/ui/settings/save", response_class=HTMLResponse)
 async def ui_settings_save(request: Request):
@@ -518,7 +514,7 @@ def ui_guests(request: Request):
 
     if request.headers.get("X-Partial") == "true":
         return HTMLResponse(content)
-    return html_page("Guest", content, show_logout=True)
+    return html_page("Guest", content, show_logout=True, auth_required=False)
 
 @app.post("/ui/guests/create", response_class=HTMLResponse)
 async def ui_guests_create(request: Request):
