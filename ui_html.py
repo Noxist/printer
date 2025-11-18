@@ -115,34 +115,32 @@ HTML_UI = f"""
 
 # --- Functions ---
 
-def html_page(title: str, content: str, show_logout: bool = False) -> HTMLResponse:
+def html_page(title: str, content: str, show_logout: bool = False, auth_required: bool = False) -> HTMLResponse:
     """
     Renders the full HTML page.
-    show_logout: If True, the logout button is visible. Default False (safe).
+    show_logout: If True, the logout button is visible.
+    auth_required: If True, the password fields are visible (injected into JS).
     """
     logout_class = "" if show_logout else "hidden"
+    # Inject the auth flag into the JS
+    auth_js_val = "true" if auth_required else "false"
+    js_injected = _JS.replace("{{AUTH_REQUIRED}}", auth_js_val)
     
     html = _HTML_BASE \
         .replace("{title}", title) \
         .replace("{content}", content) \
         .replace("{css}", _CSS) \
-        .replace("{js}", _JS) \
+        .replace("{js}", js_injected) \
         .replace("{logout_class}", logout_class)
         
     return HTMLResponse(html)
 
-def guest_ui_html(auth_required_flag: str) -> str:
-    """
-    Returns the Guest UI content. 
-    Note: main.py calls this then wraps it in html_page. 
-    For guests, show_logout should be False (default).
-    """
-    return HTML_UI.replace("{{AUTH_REQUIRED}}", auth_required_flag)
+def guest_ui_html(ignored_flag: str = "") -> str:
+    """Returns the guest UI content (raw tabs HTML). Auth flag handled by html_page."""
+    return HTML_UI
 
 def settings_html_form() -> str:
-    """
-    Generates the Settings form HTML.
-    """
+    """Generates the Settings form HTML."""
     from logic import settings_effective, SET_KEYS
     eff = settings_effective()
     rows = []
@@ -292,14 +290,16 @@ window.addEventListener("hashchange",initFromHash);
 initFromHash();
 
 // --- Auth Fields Toggle ---
-// Use class selector instead of IDs for cleaner logic
 const AUTH_REQUIRED = "{{AUTH_REQUIRED}}".toLowerCase().trim() === "true";
 
+// We toggle 'hidden' class. If required, remove hidden. If not required, add hidden.
+const shouldHide = !AUTH_REQUIRED;
+
 document.querySelectorAll(".auth-toggle-group").forEach(el => {{
-  el.classList.toggle("hidden", !AUTH_REQUIRED);
+  el.classList.toggle("hidden", shouldHide);
 }});
 document.querySelectorAll(".auth-remember-group").forEach(el => {{
-  el.classList.toggle("hidden", !AUTH_REQUIRED);
+  el.classList.toggle("hidden", shouldHide);
 }});
 
 // --- File Upload & Drag/Drop ---
