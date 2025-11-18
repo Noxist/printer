@@ -28,7 +28,7 @@ from logic import (
     cfg_get, SETTINGS, SET_KEYS, _save_settings, _reload_settings_if_changed,
     GUESTS, guest_consume_or_error, _guest_check_len_ok, GUEST_MAX_CHARS,
 )
-from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html
+from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html, login_page
 
 # --- Lifecycle & Startup ------------------------------------------------------
 
@@ -166,24 +166,48 @@ async def api_print_image(
     _print_image_content(src, img_title, img_subtitle, True, "api")
     return {"ok": True}
 
-# --- Routes: UI (HTML) --------------------------------------------------------
+# --- Routes: Auth & Login -----------------------------------------------------
+
+@app.get("/ui/login", response_class=HTMLResponse)
+def ui_login_get(request: Request):
+    # If already logged in, go to dashboard
+    if require_ui_auth(request):
+        return RedirectResponse("/ui", status_code=303)
+    return login_page()
+
+@app.post("/ui/login")
+async def ui_login_post(request: Request, pass_: str = Form(..., alias="pass"), remember: bool = Form(False)):
+    # Validate password
+    correct, should_set_cookie = ui_auth_state(request, pass_, remember)
+    if correct:
+        resp = RedirectResponse("/ui", status_code=303)
+        if should_set_cookie:
+            issue_cookie(resp)
+        return resp
+    
+    return login_page(error="Wrong password.")
+
+@app.get("/ui/logout")
+def ui_logout():
+    r = RedirectResponse("/ui/login", status_code=303)
+    r.delete_cookie("ui_token", path="/")
+    return r
+
+# --- Routes: UI (Dashboard) ---------------------------------------------------
+
 @app.get("/ui", response_class=HTMLResponse)
 def ui(request: Request):
-    # Determine Auth State
+    # 1. Check if password is configured in settings
     pass_configured = bool(cfg_get("UI_PASS"))
+    
+    # 2. Check if user is authenticated
     is_authed = require_ui_auth(request)
-    
-    # Force login reload (e.g. after logout)
-    if request.query_params.get("force_reload") == "1":
-        is_authed = False
 
-    # Logic: Show auth fields if password is set AND user is NOT authed
-    auth_required_bool = (pass_configured and not is_authed)
-    
-    # Logic: Show logout only if password is set AND user IS authed
-    show_logout = is_authed and pass_configured
+    # 3. If password exists AND user is NOT authed -> Redirect to Login
+    if pass_configured and not is_authed:
+        return RedirectResponse("/ui/login", status_code=303)
 
-    # No-Cache headers
+    # 4. Render Dashboard (No-Cache)
     headers = {
         "Cache-Control": "no-store, no-cache, must-revalidate",
         "Pragma": "no-cache",
@@ -191,26 +215,20 @@ def ui(request: Request):
     }
 
     if request.headers.get("X-Partial") == "true":
-        # For partial updates, we still need to handle replacement if we were doing it on HTML_UI
-        # But HTML_UI no longer has placeholder. Partial updates usually just reload the body.
-        # This might be slightly redundant but keeps logic simple.
         return HTMLResponse(HTML_UI, headers=headers)
 
-    # Pass flags to html_page
-    page = html_page("Receipt Printer", HTML_UI, show_logout=show_logout, auth_required=auth_required_bool)
+    # Show logout only if we are actually authed
+    page = html_page("Receipt Printer", HTML_UI, show_logout=is_authed)
     page.headers.update(headers)
     return page
 
-@app.get("/ui/logout")
-def ui_logout():
-    r = RedirectResponse("/ui?force_reload=1", status_code=303)
-    r.delete_cookie("ui_token", path="/")
-    return r
+# --- Routes: UI Print Actions (Protected) -------------------------------------
 
-# Shared Auth Helper
-def ui_handle_auth_and_cookie(request: Request, pass_: str | None, remember: bool):
-    authed, should_set_cookie = ui_auth_state(request, pass_, remember)
-    return authed, should_set_cookie
+def _ensure_authed(request: Request):
+    if cfg_get("UI_PASS") and not require_ui_auth(request):
+         # In an AJAX/Form POST, a 401 or redirect to login is appropriate
+         return False
+    return True
 
 @app.post("/ui/print/template")
 async def ui_print_template(
@@ -218,12 +236,9 @@ async def ui_print_template(
     title: str = Form(""),
     lines: str = Form(""),
     add_dt: bool = Form(False),
-    pass_: str | None = Form(None, alias="pass"),
-    remember: bool = Form(False)
 ):
-    authed, set_cookie = ui_handle_auth_and_cookie(request, pass_, remember)
-    if not authed:
-        return html_page("Receipt Printer", "<div class='card'>Wrong password.</div>")
+    if not _ensure_authed(request):
+        return RedirectResponse("/ui/login", status_code=303)
 
     title_s = (title or "").strip()
     body_lines = [ln.rstrip() for ln in (lines or "").splitlines()]
@@ -231,8 +246,7 @@ async def ui_print_template(
     is_default_title = (title_s.lower() == "tasks" or title_s == "")
 
     resp = RedirectResponse("/ui#tpl", status_code=303)
-    if set_cookie: issue_cookie(resp)
-
+    
     if is_default_title and not has_body:
         return resp
 
@@ -248,15 +262,11 @@ async def ui_print_raw(
     request: Request,
     text: str = Form(""),
     add_dt: bool = Form(False),
-    pass_: str | None = Form(None, alias="pass"),
-    remember: bool = Form(False)
 ):
-    authed, set_cookie = ui_handle_auth_and_cookie(request, pass_, remember)
-    if not authed:
-        return html_page("Receipt Printer", "<div class='card'>Wrong password.</div>")
+    if not _ensure_authed(request):
+        return RedirectResponse("/ui/login", status_code=303)
 
     resp = RedirectResponse("/ui#raw", status_code=303)
-    if set_cookie: issue_cookie(resp)
 
     if not (text or "").strip() and not add_dt:
         return resp
@@ -275,21 +285,15 @@ async def ui_print_image(
     file: UploadFile = File(...),
     img_title: str | None = Form(None),
     img_subtitle: str | None = Form(None),
-    pass_: str | None = Form(None, alias="pass"),
-    remember: bool = Form(False),
 ):
-    authed, set_cookie = ui_handle_auth_and_cookie(request, pass_, remember)
-    if not authed:
-        return html_page("Receipt Printer", "<div class='card'>Wrong password.</div>")
+    if not _ensure_authed(request):
+        return RedirectResponse("/ui/login", status_code=303)
     
     try:
         content = await file.read()
         src = Image.open(io.BytesIO(content))
         _print_image_content(src, img_title, img_subtitle, True, "ui")
-        
-        resp = RedirectResponse("/ui#img", status_code=303)
-        if set_cookie: issue_cookie(resp)
-        return resp
+        return RedirectResponse("/ui#img", status_code=303)
     except Exception as e:
         log("ui_print_image error:", repr(e))
         return html_page("Receipt Printer", f"<div class='card'>Error: {e}</div>")
@@ -307,7 +311,7 @@ def guest_ui(token: str, request: Request):
     content = (
         f"<div class='card'>Guest: <b>{info['name']}</b> · left today: {remaining}</div>"
         + limit_hint
-        + guest_ui_html() # Use raw tabs without replace
+        + guest_ui_html()
     )
     content = content.replace('/ui/print/template', f'/guest/{token}/print/template')
     content = content.replace('/ui/print/raw', f'/guest/{token}/print/raw')
@@ -316,8 +320,7 @@ def guest_ui(token: str, request: Request):
     if request.headers.get("X-Partial") == "true":
         return HTMLResponse(content)
     
-    # Guests don't need logout, and never need auth fields
-    return html_page("Guest print", content, show_logout=False, auth_required=False)
+    return html_page("Guest print", content, show_logout=False)
 
 @app.post("/guest/{token}/print/template")
 async def guest_print_template(
@@ -381,19 +384,20 @@ async def guest_print_image(
 @app.get("/ui/settings", response_class=HTMLResponse)
 def ui_settings(request: Request):
     if not require_ui_auth(request):
-        content = "<div class='card'>Not signed in.</div>"
-    else:
-        content = "<h3 class='title'>Settings</h3>" + settings_html_form()
+        return RedirectResponse("/ui/login", status_code=303)
+    
+    content = "<h3 class='title'>Settings</h3>" + settings_html_form()
 
     if request.headers.get("X-Partial") == "true":
         return HTMLResponse(content)
     
-    return html_page("Settings", content, show_logout=True, auth_required=False)
+    return html_page("Settings", content, show_logout=True)
 
 @app.post("/ui/settings/save", response_class=HTMLResponse)
 async def ui_settings_save(request: Request):
     if not require_ui_auth(request):
-        return html_page("Settings", "<div class='card'>Not signed in.</div>")
+        return RedirectResponse("/ui/login", status_code=303)
+
     form = await request.form()
     for key, default, typ, _ in SET_KEYS:
         if typ == "checkbox":
@@ -415,7 +419,7 @@ async def ui_settings_save(request: Request):
 @app.get("/ui/settings/test", response_class=HTMLResponse)
 def ui_settings_test(request: Request):
     if not require_ui_auth(request):
-        return html_page("Settings", "<div class='card'>Not signed in.</div>")
+        return RedirectResponse("/ui/login", status_code=303)
     
     sample_lines = ["Read - 10 Min", "Drink water", "Plan – 10 Min", "Exercise – 20 Min"]
     _print_text_content("TEST", sample_lines, True, True, "ui")
@@ -508,18 +512,17 @@ def _render_guests_admin(request: Request) -> str:
 @app.get("/ui/guests", response_class=HTMLResponse)
 def ui_guests(request: Request):
     if not require_ui_auth(request):
-        content = "<div class='card'>Not signed in.</div>"
-    else:
-        content = _render_guests_admin(request)
-
+        return RedirectResponse("/ui/login", status_code=303)
+    
+    content = _render_guests_admin(request)
     if request.headers.get("X-Partial") == "true":
         return HTMLResponse(content)
-    return html_page("Guest", content, show_logout=True, auth_required=False)
+    return html_page("Guest", content, show_logout=True)
 
 @app.post("/ui/guests/create", response_class=HTMLResponse)
 async def ui_guests_create(request: Request):
     if not require_ui_auth(request):
-        return html_page("Guest", "<div class='card'>Not signed in.</div>")
+        return RedirectResponse("/ui/login", status_code=303)
     form  = await request.form()
     name  = (form.get("name") or "Gast").strip()
     quota = int((form.get("quota") or 5))
@@ -531,7 +534,7 @@ async def ui_guests_create(request: Request):
 @app.post("/ui/guests/revoke", response_class=HTMLResponse)
 async def ui_guests_revoke(request: Request):
     if not require_ui_auth(request):
-        return html_page("Guest", "<div class='card'>Not signed in.</div>")
+        return RedirectResponse("/ui/login", status_code=303)
     form = await request.form()
     tok  = form.get("token") or ""
     ok   = GUESTS.revoke(tok)
