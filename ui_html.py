@@ -1,14 +1,190 @@
 from fastapi.responses import HTMLResponse
 from logic import PRINT_WIDTH_PX
 
-HTML_BASE = r"""
+# --- Reusable Snippets ---
+
+_AUTH_FORM_SNIPPET = """
+    <div class="auth-toggle-group row hidden" style="margin-top:14px; gap:10px">
+      <label>UI password</label>
+      <input type="password" name="pass" placeholder="only if required" style="max-width:220px">
+      <label class="auth-remember-group"><input type="checkbox" name="remember"> Stay signed in</label>
+    </div>
+"""
+
+# --- HTML Layout ---
+
+_HTML_BASE = """
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{title}</title>
 <link rel="icon" href="/favicon.ico" type="image/x-icon">
-<style>
+<style>{css}</style>
+</head>
+<body>
+ <header class="top">
+  <div class="top-inner wrap">
+    <a href="/ui" class="title" style="text-decoration:none; color:inherit;">Receipt Printer</a>
+    <div class="spacer"></div>
+    <nav class="nav" id="main-nav">
+      <a class="link" href="/ui">Printer</a>
+      <a class="link guest-hide" href="/ui/guests">Guests</a>
+      <a class="link guest-hide" href="/ui/settings">Settings</a>
+      <a class="link {logout_class}" id="logout-link" href="/ui/logout">Logout</a>
+    </nav>
+  </div>
+</header>
+  <main class="wrap">{content}</main>
+<script>{js}</script>
+</body>
+</html>
+"""
+
+# --- Main UI Content (Tabs) ---
+
+HTML_UI = f"""
+<div class="tabs" role="tablist" aria-label="Mode">
+  <div class="tab" role="tab" id="tab-tpl" aria-controls="pane_tpl" aria-selected="true" tabindex="0">Template</div>
+  <div class="tab" role="tab" id="tab-raw" aria-controls="pane_raw" aria-selected="false" tabindex="-1">Raw</div>
+  <div class="tab" role="tab" id="tab-img" aria-controls="pane_img" aria-selected="false" tabindex="-1">Image</div>
+</div>
+
+<section id="pane_tpl" class="card" role="tabpanel" aria-labelledby="tab-tpl">
+  <form method="post" action="/ui/print/template">
+    <label for="title">Title</label>
+    <input id="title" type="text" name="title" placeholder="Tasks">
+
+    <label for="lines">Lines (one per line)</label>
+    <textarea id="lines" name="lines" placeholder="Buy milk&#10;Pay bills&#10;Write code"></textarea>
+
+    <label><input type="checkbox" name="add_dt"> Add date/time</label>
+
+    {_AUTH_FORM_SNIPPET}
+
+    <div class="form-actions">
+      <button type="submit">Print</button>
+    </div>
+  </form>
+</section>
+
+<section id="pane_raw" class="card" role="tabpanel" aria-labelledby="tab-raw" hidden>
+  <form method="post" action="/ui/print/raw">
+    <label for="text">Raw text</label>
+    <textarea id="text" name="text" placeholder="Any text..."></textarea>
+
+    <label><input type="checkbox" name="add_dt"> Add date/time</label>
+
+    {_AUTH_FORM_SNIPPET}
+
+    <div class="form-actions">
+      <button type="submit">Print</button>
+    </div>
+  </form>
+</section>
+
+<section id="pane_img" class="card" role="tabpanel" aria-labelledby="tab-img" hidden>
+  <form method="post" action="/ui/print/image" enctype="multipart/form-data">
+    <div class="grid">
+      <div>
+        <label for="imgfile">Upload Image</label>
+        <input id="imgfile" type="file" name="file" accept="image/*" hidden>
+        <label for="imgfile" class="file-btn">Choose File</label>
+        <span id="file-chosen">No file selected</span>
+      </div>
+      <div>
+        <label for="img_title" style="margin-top:0">Title (optional)</label>
+        <input id="img_title" type="text" name="img_title" placeholder="Title">
+        <label for="img_subtitle" style="margin-top:8px">Subtitle (optional)</label>
+        <input id="img_subtitle" type="text" name="img_subtitle" placeholder="Subtitle">
+      </div>
+    </div>
+    
+    {_AUTH_FORM_SNIPPET}
+
+    <div class="form-actions">
+      <button type="submit">Print</button>
+    </div>
+    <div id="drop-zone" class="drop-zone">
+      Drag & Drop Image Here
+    </div>
+  </form>
+</section>
+"""
+
+# --- Functions ---
+
+def html_page(title: str, content: str, show_logout: bool = False) -> HTMLResponse:
+    """
+    Renders the full HTML page.
+    show_logout: If True, the logout button is visible. Default False (safe).
+    """
+    logout_class = "" if show_logout else "hidden"
+    
+    html = _HTML_BASE \
+        .replace("{title}", title) \
+        .replace("{content}", content) \
+        .replace("{css}", _CSS) \
+        .replace("{js}", _JS) \
+        .replace("{logout_class}", logout_class)
+        
+    return HTMLResponse(html)
+
+def guest_ui_html(auth_required_flag: str) -> str:
+    """
+    Returns the Guest UI content. 
+    Note: main.py calls this then wraps it in html_page. 
+    For guests, show_logout should be False (default).
+    """
+    return HTML_UI.replace("{{AUTH_REQUIRED}}", auth_required_flag)
+
+def settings_html_form() -> str:
+    """
+    Generates the Settings form HTML.
+    """
+    from logic import settings_effective, SET_KEYS
+    eff = settings_effective()
+    rows = []
+
+    for key, default, typ, opts in SET_KEYS:
+        val = eff.get(key, default)
+        label = key.replace("RECEIPT_", "").replace("_", " ").title()
+        
+        if typ == "select":
+            options = "".join([
+                f'<option value="{o}"{" selected" if str(val)==str(o) else ""}>{o}</option>' 
+                for o in opts
+            ])
+            field = f'<select name="{key}">{options}</select>'
+        elif typ == "checkbox":
+            checked = " checked" if str(val).lower() in ("1","true","yes","on","y","t") else ""
+            field = f'<input type="checkbox" name="{key}" value="1"{checked}>'
+        elif typ == "number":
+            field = f'<input type="number" step="any" name="{key}" value="{val}">'
+        else:
+            field = f'<input type="text" name="{key}" value="{val}">'
+            
+        rows.append(f"<div><label>{label}</label>{field}</div>")
+
+    form = f"""
+    <section class="card">
+      <form method="post" action="/ui/settings/save">
+        <div class="grid">
+          {''.join(rows)}
+        </div>
+        <div class="row" style="margin-top:16px; gap:12px; justify-content:flex-end">
+          <button type="submit">Save</button>
+          <a class="link" href="/ui/settings/test">Test print</a>
+        </div>
+      </form>
+    </section>
+    """
+    return form
+
+# --- Static Assets ---
+
+_CSS = r"""
   :root{
     --bg:#f5f7fa; --card:#ffffff; --muted:#475467; --text:#0b1220; --line:#e7eaf0;
     --accent:#3b82f6; --accent-2:#8b5cf6; --err:#ef4444; --radius:18px;
@@ -75,237 +251,93 @@ HTML_BASE = r"""
   button.secondary{background:transparent; color:var(--text); border:1px solid var(--line); box-shadow:none}
   .hidden{display:none !important}
 
-  /* File upload button */
   .file-btn{display:inline-block; background:linear-gradient(135deg, var(--accent), var(--accent-2));
     color:#fff; padding:11px 18px; border-radius:12px; font-weight:600; cursor:pointer;
     box-shadow:0 6px 14px rgba(59,130,246,.25);}
   #file-chosen{margin-left:10px; color:var(--muted); font-size:.9rem}
+  .drop-zone{
+    margin-top:16px; padding:30px; border:2px dashed var(--line); 
+    text-align:center; border-radius:12px; color:var(--muted); cursor:pointer
+  }
 
-  /* Responsive button placement */
   .form-actions{display:flex; justify-content:flex-end; margin-top:18px}
   @media (max-width:760px){
     .form-actions{justify-content:center}
     .form-actions button{width:100%; max-width:320px}
   }
   input[type="checkbox"]:focus {outline: none; box-shadow: none;}
-</style>
-<body>
- <header class="top">
-  <div class="top-inner wrap">
-    <!-- Klickbarer Titel links -->
-    <a href="/ui" class="title" style="text-decoration:none; color:inherit;">Receipt Printer</a>
-    <div class="spacer"></div>
-    <nav class="nav" id="main-nav">
-      <!-- Link oben rechts -->
-      <a class="link" href="/ui" title="Printer">Printer</a>
-      <a class="link guest-hide" href="/ui/guests" data-nav>Guests</a>
-      <a class="link guest-hide" href="/ui/settings" data-nav>Settings</a>
-      <a class="link" id="logout-link" href="/ui/logout" title="Logout">Logout</a>
-    </nav>
-  </div>
-</header>
-  <main class="wrap">{content}</main>
-</body>
-</html>
 """
 
-def html_page(title: str, content: str) -> HTMLResponse:
-    return HTMLResponse(HTML_BASE.replace("{title}", title).replace("{content}", content))
-
-HTML_UI = r"""
-<div class="tabs" role="tablist" aria-label="Mode">
-  <div class="tab" role="tab" id="tab-tpl" aria-controls="pane_tpl" aria-selected="true" tabindex="0">Template</div>
-  <div class="tab" role="tab" id="tab-raw" aria-controls="pane_raw" aria-selected="false" tabindex="-1">Raw</div>
-  <div class="tab" role="tab" id="tab-img" aria-controls="pane_img" aria-selected="false" tabindex="-1">Image</div>
-</div>
-
-<!-- Template -->
-<section id="pane_tpl" class="card" role="tabpanel" aria-labelledby="tab-tpl">
-  <form method="post" action="/ui/print/template">
-    <label for="title">Title</label>
-    <input id="title" type="text" name="title" placeholder="Tasks">
-
-    <label for="lines">Lines (one per line)</label>
-    <textarea id="lines" name="lines" placeholder="Buy milk&#10;Pay bills&#10;Write code"></textarea>
-
-    <label><input type="checkbox" name="add_dt"> Add date/time</label>
-
-    <div id="auth-wrap" class="row" style="margin-top:14px; gap:10px">
-      <label for="pass">UI password</label>
-      <input id="pass" type="password" name="pass" placeholder="only if required" style="max-width:220px">
-      <label id="remember-wrap"><input type="checkbox" name="remember"> Stay signed in</label>
-    </div>
-
-    <div class="form-actions">
-      <button type="submit">Print</button>
-    </div>
-  </form>
-</section>
-
-<!-- Raw -->
-<section id="pane_raw" class="card" role="tabpanel" aria-labelledby="tab-raw" hidden>
-  <form method="post" action="/ui/print/raw">
-    <label for="text">Raw text</label>
-    <textarea id="text" name="text" placeholder="Any text..."></textarea>
-
-    <label><input type="checkbox" name="add_dt"> Add date/time</label>
-
-    <div id="auth-wrap2" class="row" style="margin-top:14px; gap:10px">
-      <label for="pass2">UI password</label>
-      <input id="pass2" type="password" name="pass" placeholder="only if required" style="max-width:220px">
-      <label id="remember-wrap2"><input type="checkbox" name="remember"> Stay signed in</label>
-    </div>
-
-    <div class="form-actions">
-      <button type="submit">Print</button>
-    </div>
-  </form>
-</section>
-
-<!-- Image -->
-<section id="pane_img" class="card" role="tabpanel" aria-labelledby="tab-img" hidden>
-  <form method="post" action="/ui/print/image" enctype="multipart/form-data">
-    <div class="grid">
-      <div>
-        <label for="imgfile">Upload Image</label>
-        <input id="imgfile" type="file" name="file" accept="image/*" hidden>
-        <label for="imgfile" class="file-btn">Choose File</label>
-        <span id="file-chosen">No file selected</span>
-      </div>
-      <div>
-        <label for="img_title" style="margin-top:0">Title (optional)</label>
-        <input id="img_title" type="text" name="img_title" placeholder="Title">
-        <label for="img_subtitle" style="margin-top:8px">Subtitle (optional)</label>
-        <input id="img_subtitle" type="text" name="img_subtitle" placeholder="Subtitle">
-      </div>
-    </div>
-    <div id="auth-wrap3" class="row" style="margin-top:14px; gap:10px">
-      <label for="pass3">UI password</label>
-      <input id="pass3" type="password" name="pass" placeholder="only if required" style="max-width:220px">
-      <label id="remember-wrap3"><input type="checkbox" name="remember"> Stay signed in</label>
-    </div>
-    <div class="form-actions">
-      <button type="submit">Print</button>
-    </div>
-    <div id="drop-zone" style="margin-top:16px; padding:30px; border:2px dashed var(--line); text-align:center; border-radius:12px; color:var(--muted); cursor:pointer">
-      Drag & Drop Image Here
-    </div>
-  </form>
-</section>
-
-<script>
-const tabs=[{id:"tpl",btn:"tab-tpl",pane:"pane_tpl"},{id:"raw",btn:"tab-raw",pane:"pane_raw"},{id:"img",btn:"tab-img",pane:"pane_img"}];
-function selectTab(id){
-  tabs.forEach(t=>{
+_JS = f"""
+// --- Tabs ---
+const tabs=[{{id:"tpl",btn:"tab-tpl",pane:"pane_tpl"}},{{id:"raw",btn:"tab-raw",pane:"pane_raw"}},{{id:"img",btn:"tab-img",pane:"pane_img"}}];
+function selectTab(id){{
+  tabs.forEach(t=>{{
     const btn=document.getElementById(t.btn),pane=document.getElementById(t.pane),active=(t.id===id);
     btn.setAttribute("aria-selected",active?"true":"false");
     btn.tabIndex=active?0:-1; pane.hidden=!active;
-  });
+  }});
   history.replaceState(null,"","#"+id);
-}
-function initFromHash(){
+}}
+function initFromHash(){{
   const h=(location.hash||"#tpl").slice(1);
   selectTab(tabs.some(t=>t.id===h)?h:"tpl");
-}
-tabs.forEach(t=>{
+}}
+tabs.forEach(t=>{{
   const el=document.getElementById(t.btn);
   el.addEventListener("click",()=>selectTab(t.id));
-  el.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); selectTab(t.id); }});
-});
+  el.addEventListener("keydown",e=>{{ if(e.key==="Enter"||e.key===" "){{ e.preventDefault(); selectTab(t.id); }} }});
+}});
 window.addEventListener("hashchange",initFromHash);
 initFromHash();
 
-// File chosen text update
-document.addEventListener("DOMContentLoaded",()=>{
+// --- Auth Fields Toggle ---
+// Use class selector instead of IDs for cleaner logic
+const AUTH_REQUIRED = "{{AUTH_REQUIRED}}".toLowerCase().trim() === "true";
+
+document.querySelectorAll(".auth-toggle-group").forEach(el => {{
+  el.classList.toggle("hidden", !AUTH_REQUIRED);
+}});
+document.querySelectorAll(".auth-remember-group").forEach(el => {{
+  el.classList.toggle("hidden", !AUTH_REQUIRED);
+}});
+
+// --- File Upload & Drag/Drop ---
+document.addEventListener("DOMContentLoaded",()=>{{
   const input=document.getElementById("imgfile");
-  if(input){
-    input.addEventListener("change",function(){
-      const fileChosen=document.getElementById("file-chosen");
-      fileChosen.textContent=this.files.length?this.files[0].name:"No file selected";
-    });
-  }
-});
+  const dropZone=document.getElementById("drop-zone");
+  const fileChosen=document.getElementById("file-chosen");
+  
+  if(input){{
+    input.addEventListener("change", function(){{
+      if(this.files.length) {{
+        fileChosen.textContent = this.files[0].name;
+        if(dropZone) dropZone.textContent = "Selected: " + this.files[0].name;
+      }}
+    }});
+  }}
+  
+  if(dropZone && input){{
+    dropZone.addEventListener("click", ()=>input.click());
+    ["dragenter","dragover"].forEach(ev=>dropZone.addEventListener(ev,e=>{{
+      e.preventDefault(); dropZone.style.background="rgba(59,130,246,0.08)";
+    }}));
+    ["dragleave","drop"].forEach(ev=>dropZone.addEventListener(ev,e=>{{
+      e.preventDefault(); dropZone.style.background="";
+    }}));
+    dropZone.addEventListener("drop",e=>{{
+      e.preventDefault();
+      if(e.dataTransfer.files.length){{
+        input.files = e.dataTransfer.files;
+        dropZone.textContent = "Selected: " + e.dataTransfer.files[0].name;
+        fileChosen.textContent = e.dataTransfer.files[0].name;
+      }}
+    }});
+  }}
+}});
 
-// Hide password UI if not required
-const AUTH_REQUIRED=String("{{AUTH_REQUIRED}}").toLowerCase().trim()==="true";
-["auth-wrap","auth-wrap2","auth-wrap3"].forEach(id=>{
-  const el=document.getElementById(id);
-  if(el) el.classList.toggle("hidden", !AUTH_REQUIRED);
-});
-["remember-wrap","remember-wrap2","remember-wrap3"].forEach(id=>{
-  const el=document.getElementById(id);
-  if(el) el.classList.toggle("hidden", !AUTH_REQUIRED);
-});
-
-// --- Drag & Drop Upload ---
-const dropZone = document.getElementById("drop-zone");
-if(dropZone){
-  const hiddenFile = document.getElementById("imgfile");
-  dropZone.addEventListener("click", ()=>hiddenFile.click());
-  ["dragenter","dragover"].forEach(ev=>dropZone.addEventListener(ev,e=>{
-    e.preventDefault(); dropZone.style.background="rgba(59,130,246,0.08)";
-  }));
-  ["dragleave","drop"].forEach(ev=>dropZone.addEventListener(ev,e=>{
-    e.preventDefault(); dropZone.style.background="";
-  }));
-  dropZone.addEventListener("drop",e=>{
-    e.preventDefault();
-    if(e.dataTransfer.files.length){
-      hiddenFile.files = e.dataTransfer.files;
-      dropZone.textContent = "Selected: " + e.dataTransfer.files[0].name;
-      // wait for user to click Print
-    }
-  });
-  hiddenFile.addEventListener("change",()=>{
-    if(hiddenFile.files.length){
-      dropZone.textContent = "Selected: " + hiddenFile.files[0].name;
-      // wait for user to click Print
-    }
-  });
-}
-
-// Hide Guests/Settings if guest UI
-if(location.pathname.startsWith("/guest/")){
+// --- Guest Mode Cleanup ---
+if(location.pathname.startsWith("/guest/")){{
   document.querySelectorAll(".guest-hide").forEach(el=>el.style.display="none");
-}
-</script>
+}}
 """.replace("{w}", str(PRINT_WIDTH_PX))
-
-
-def settings_html_form() -> str:
-    from logic import settings_effective, SET_KEYS
-    eff = settings_effective()
-    rows = []
-    for key, default, typ, opts in SET_KEYS:
-        val = eff.get(key, default)
-        label = key.replace("RECEIPT_", "").replace("_", " ").title()
-        if typ == "select":
-            options = "".join([f'<option value="{o}"{" selected" if str(val)==str(o) else ""}>{o}</option>' for o in opts])
-            field = f'<select name="{key}">{options}</select>'
-        elif typ == "checkbox":
-            checked = " checked" if str(val).lower() in ("1","true","yes","on","y","t") else ""
-            field = f'<input type="checkbox" name="{key}" value="1"{checked}>'
-        elif typ == "number":
-            field = f'<input type="number" step="any" name="{key}" value="{val}">'
-        else:
-            field = f'<input type="text" name="{key}" value="{val}">'
-        rows.append(f"<div><label>{label}</label>{field}</div>")
-
-    form = f"""
-    <section class="card">
-      <form method="post" action="/ui/settings/save">
-        <div class="grid">
-          {''.join(rows)}
-        </div>
-        <div class="row" style="margin-top:16px; gap:12px; justify-content:flex-end">
-          <button type="submit">Save</button>
-          <a class="link" href="/ui/settings/test">Test print</a>
-        </div>
-      </form>
-    </section>
-    """
-    return form
-
-
-def guest_ui_html(auth_required_flag: str) -> str:
-    return HTML_UI.replace("{{AUTH_REQUIRED}}", auth_required_flag)
