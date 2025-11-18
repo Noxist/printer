@@ -1,16 +1,6 @@
 from fastapi.responses import HTMLResponse
 from logic import PRINT_WIDTH_PX
 
-# --- Reusable Snippets ---
-
-_AUTH_FORM_SNIPPET = """
-    <div class="auth-toggle-group row hidden" style="margin-top:14px; gap:10px">
-      <label>UI password</label>
-      <input type="password" name="pass" placeholder="only if required" style="max-width:220px">
-      <label class="auth-remember-group"><input type="checkbox" name="remember"> Stay signed in</label>
-    </div>
-"""
-
 # --- HTML Layout ---
 
 _HTML_BASE = """
@@ -42,7 +32,30 @@ _HTML_BASE = """
 </html>
 """
 
-# --- Main UI Content (Tabs) ---
+# --- Login Page ---
+
+HTML_LOGIN = """
+<div style="max-width: 400px; margin: 40px auto;">
+  <section class="card">
+    <h3 class="title" style="margin-bottom:16px; text-align:center">Login</h3>
+    <form method="post" action="/ui/login">
+      <label for="pass">Password</label>
+      <input id="pass" type="password" name="pass" placeholder="Enter UI Password" required autofocus>
+      
+      <label style="margin-top:14px; display:flex; align-items:center; gap:8px; cursor:pointer">
+        <input type="checkbox" name="remember" checked style="width:auto; margin:0"> 
+        Stay signed in
+      </label>
+      
+      <div class="form-actions" style="margin-top:20px">
+        <button type="submit" style="width:100%">Sign In</button>
+      </div>
+    </form>
+  </section>
+</div>
+"""
+
+# --- Main UI Content (Tabs) - No Auth Fields! ---
 
 HTML_UI = f"""
 <div class="tabs" role="tablist" aria-label="Mode">
@@ -61,8 +74,6 @@ HTML_UI = f"""
 
     <label><input type="checkbox" name="add_dt"> Add date/time</label>
 
-    {_AUTH_FORM_SNIPPET}
-
     <div class="form-actions">
       <button type="submit">Print</button>
     </div>
@@ -75,8 +86,6 @@ HTML_UI = f"""
     <textarea id="text" name="text" placeholder="Any text..."></textarea>
 
     <label><input type="checkbox" name="add_dt"> Add date/time</label>
-
-    {_AUTH_FORM_SNIPPET}
 
     <div class="form-actions">
       <button type="submit">Print</button>
@@ -101,8 +110,6 @@ HTML_UI = f"""
       </div>
     </div>
     
-    {_AUTH_FORM_SNIPPET}
-
     <div class="form-actions">
       <button type="submit">Print</button>
     </div>
@@ -115,32 +122,28 @@ HTML_UI = f"""
 
 # --- Functions ---
 
-def html_page(title: str, content: str, show_logout: bool = False, auth_required: bool = False) -> HTMLResponse:
-    """
-    Renders the full HTML page.
-    show_logout: If True, the logout button is visible.
-    auth_required: If True, the password fields are visible (injected into JS).
-    """
+def html_page(title: str, content: str, show_logout: bool = False) -> HTMLResponse:
     logout_class = "" if show_logout else "hidden"
-    # Inject the auth flag into the JS
-    auth_js_val = "true" if auth_required else "false"
-    js_injected = _JS.replace("{{AUTH_REQUIRED}}", auth_js_val)
     
     html = _HTML_BASE \
         .replace("{title}", title) \
         .replace("{content}", content) \
         .replace("{css}", _CSS) \
-        .replace("{js}", js_injected) \
+        .replace("{js}", _JS) \
         .replace("{logout_class}", logout_class)
         
     return HTMLResponse(html)
 
+def login_page(error: str = None) -> HTMLResponse:
+    content = HTML_LOGIN
+    if error:
+        content = f"<div class='card' style='border-color:var(--err); color:var(--err); max-width:400px; margin:20px auto; text-align:center'>{error}</div>" + content
+    return html_page("Login", content, show_logout=False)
+
 def guest_ui_html(ignored_flag: str = "") -> str:
-    """Returns the guest UI content (raw tabs HTML). Auth flag handled by html_page."""
     return HTML_UI
 
 def settings_html_form() -> str:
-    """Generates the Settings form HTML."""
     from logic import settings_effective, SET_KEYS
     eff = settings_effective()
     rows = []
@@ -150,10 +153,7 @@ def settings_html_form() -> str:
         label = key.replace("RECEIPT_", "").replace("_", " ").title()
         
         if typ == "select":
-            options = "".join([
-                f'<option value="{o}"{" selected" if str(val)==str(o) else ""}>{o}</option>' 
-                for o in opts
-            ])
+            options = "".join([f'<option value="{o}"{" selected" if str(val)==str(o) else ""}>{o}</option>' for o in opts])
             field = f'<select name="{key}">{options}</select>'
         elif typ == "checkbox":
             checked = " checked" if str(val).lower() in ("1","true","yes","on","y","t") else ""
@@ -270,10 +270,13 @@ _JS = f"""
 // --- Tabs ---
 const tabs=[{{id:"tpl",btn:"tab-tpl",pane:"pane_tpl"}},{{id:"raw",btn:"tab-raw",pane:"pane_raw"}},{{id:"img",btn:"tab-img",pane:"pane_img"}}];
 function selectTab(id){{
+  if(!document.getElementById("tab-tpl")) return; // Login page skip
   tabs.forEach(t=>{{
     const btn=document.getElementById(t.btn),pane=document.getElementById(t.pane),active=(t.id===id);
-    btn.setAttribute("aria-selected",active?"true":"false");
-    btn.tabIndex=active?0:-1; pane.hidden=!active;
+    if(btn && pane){{
+      btn.setAttribute("aria-selected",active?"true":"false");
+      btn.tabIndex=active?0:-1; pane.hidden=!active;
+    }}
   }});
   history.replaceState(null,"","#"+id);
 }}
@@ -283,24 +286,13 @@ function initFromHash(){{
 }}
 tabs.forEach(t=>{{
   const el=document.getElementById(t.btn);
-  el.addEventListener("click",()=>selectTab(t.id));
-  el.addEventListener("keydown",e=>{{ if(e.key==="Enter"||e.key===" "){{ e.preventDefault(); selectTab(t.id); }} }});
+  if(el) {{
+    el.addEventListener("click",()=>selectTab(t.id));
+    el.addEventListener("keydown",e=>{{ if(e.key==="Enter"||e.key===" "){{ e.preventDefault(); selectTab(t.id); }} }});
+  }}
 }});
 window.addEventListener("hashchange",initFromHash);
 initFromHash();
-
-// --- Auth Fields Toggle ---
-const AUTH_REQUIRED = "{{AUTH_REQUIRED}}".toLowerCase().trim() === "true";
-
-// We toggle 'hidden' class. If required, remove hidden. If not required, add hidden.
-const shouldHide = !AUTH_REQUIRED;
-
-document.querySelectorAll(".auth-toggle-group").forEach(el => {{
-  el.classList.toggle("hidden", shouldHide);
-}});
-document.querySelectorAll(".auth-remember-group").forEach(el => {{
-  el.classList.toggle("hidden", shouldHide);
-}});
 
 // --- File Upload & Drag/Drop ---
 document.addEventListener("DOMContentLoaded",()=>{{
