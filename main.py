@@ -21,6 +21,7 @@ from queue_print import (
     start_background_flusher, stop_background_flusher, 
     enqueue_base64_png, PRINT_QUEUE_DIR
 )
+from printer_status import status_checker  # <--- NEW IMPORT
 from routes_sources import router as sources_router
 from logic import (
     log, now_str, pil_to_base64_png, render_receipt, render_image_with_headers,
@@ -37,14 +38,17 @@ async def lifespan(app: FastAPI):
     print("[main] 🧩 Starte Printer-App …")
     try:
         stop_background_flusher()
-        print("[main] 🛑 Alte Queue-Threads gestoppt.")
+        status_checker.stop() # <--- STOP OLD CHECKER
+        print("[main] 🛑 Alte Threads gestoppt.")
     except Exception as e:
         print("[main] ⚠️ Konnte alten Thread nicht stoppen:", e)
     
     start_background_flusher()
-    print("[main] ✅ Druck-Queue frisch gestartet.")
+    status_checker.start() # <--- START NEW CHECKER
+    print("[main] ✅ Druck-Queue und Status-Checker gestartet.")
     yield
     stop_background_flusher()
+    status_checker.stop() # <--- CLEANUP
     print("[main] 👋 App shutdown.")
 
 app = FastAPI(title="Printer API", lifespan=lifespan)
@@ -107,7 +111,8 @@ async def favicon():
     path = os.path.join(static_dir, "favicon.ico")
     if os.path.exists(path):
         return FileResponse(path)
-    return FileResponse(os.path.join(static_dir, "favicon.png"))
+    # Return empty response if missing to avoid 404 spam
+    return PlainTextResponse("")
 
 @app.get("/_health", response_class=PlainTextResponse)
 def health():
@@ -117,6 +122,14 @@ def health():
 def ok():
     from logic import TOPIC, PUBLISH_QOS
     return {"ok": True, "topic": TOPIC, "qos": PUBLISH_QOS}
+
+# --- NEW ROUTE: Printer Status ------------------------------------------------
+@app.get("/api/printer/status")
+def get_printer_status():
+    return {
+        "online": status_checker.is_online, 
+        "ip": status_checker.ip or "Not Configured"
+    }
 
 # --- Routes: API (JSON) -------------------------------------------------------
 @app.post("/print")
@@ -170,21 +183,18 @@ async def api_print_image(
 
 @app.get("/ui/login", response_class=HTMLResponse)
 def ui_login_get(request: Request):
-    # If already logged in, go to dashboard
     if require_ui_auth(request):
         return RedirectResponse("/ui", status_code=303)
     return login_page()
 
 @app.post("/ui/login")
 async def ui_login_post(request: Request, pass_: str = Form(..., alias="pass"), remember: bool = Form(False)):
-    # Validate password
     correct, should_set_cookie = ui_auth_state(request, pass_, remember)
     if correct:
         resp = RedirectResponse("/ui", status_code=303)
         if should_set_cookie:
             issue_cookie(resp)
         return resp
-    
     return login_page(error="Wrong password.")
 
 @app.get("/ui/logout")
@@ -197,17 +207,12 @@ def ui_logout():
 
 @app.get("/ui", response_class=HTMLResponse)
 def ui(request: Request):
-    # 1. Check if password is configured in settings
     pass_configured = bool(cfg_get("UI_PASS"))
-    
-    # 2. Check if user is authenticated
     is_authed = require_ui_auth(request)
 
-    # 3. If password exists AND user is NOT authed -> Redirect to Login
     if pass_configured and not is_authed:
         return RedirectResponse("/ui/login", status_code=303)
 
-    # 4. Render Dashboard (No-Cache)
     headers = {
         "Cache-Control": "no-store, no-cache, must-revalidate",
         "Pragma": "no-cache",
@@ -217,7 +222,6 @@ def ui(request: Request):
     if request.headers.get("X-Partial") == "true":
         return HTMLResponse(HTML_UI, headers=headers)
 
-    # Show logout only if we are actually authed
     page = html_page("Receipt Printer", HTML_UI, show_logout=is_authed)
     page.headers.update(headers)
     return page
@@ -226,7 +230,6 @@ def ui(request: Request):
 
 def _ensure_authed(request: Request):
     if cfg_get("UI_PASS") and not require_ui_auth(request):
-         # In an AJAX/Form POST, a 401 or redirect to login is appropriate
          return False
     return True
 
@@ -461,7 +464,6 @@ def _render_guests_admin(request: Request) -> str:
         """
         rows.append(row)
 
-    # JS for Copy button
     copy_js = """
     <script>
     function copyToClipboard(id){
