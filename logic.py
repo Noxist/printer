@@ -1,4 +1,4 @@
-# logic.py — robust print rendering (fonts fallback, no black blocks), Swiss-safe (kein ß)
+# logic.py — robust print rendering (fonts fallback, no black blocks), Swiss-safe (kein ss)
 
 import os, ssl, json, time, base64, uuid, io, hmac, hashlib, sys, random
 from datetime import datetime, timedelta
@@ -188,7 +188,12 @@ def init_mqtt():
     INBOX_TOPIC   = os.getenv("INBOX_TOPIC", "todos/print")        # Colonnes → hierhin
     PRINTER_TOPIC = os.getenv("PRINTER_TOPIC", "Prn20B1B50C2199")  # Dein Drucker-Topic
 
-    client = mqtt.Client()
+    # FIX: paho-mqtt 2.x erfordert oft explizite API-Version
+    try:
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    except AttributeError:
+        # Fallback für ältere Versionen
+        client = mqtt.Client()
 
     if MQTT_TLS:
         client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
@@ -197,14 +202,15 @@ def init_mqtt():
 
     client.on_message = _handle_incoming_mqtt
 
-    # Verbindung aufbauen
-    client.connect(MQTT_HOST, MQTT_PORT, 60)
-
-    # Nur das Inbox-Topic abonnieren (nicht dein Drucker-Topic!)
-    client.subscribe(INBOX_TOPIC, qos=PUBLISH_QOS)
-
-    client.loop_start()
-    log(f"✅ MQTT connected & subscribed to {INBOX_TOPIC}")
+    # Verbindung aufbauen (mit Fehlerbehandlung, damit App nicht crasht)
+    try:
+        client.connect(MQTT_HOST, MQTT_PORT, 60)
+        # Nur das Inbox-Topic abonnieren (nicht dein Drucker-Topic!)
+        client.subscribe(INBOX_TOPIC, qos=PUBLISH_QOS)
+        client.loop_start()
+        log(f"✅ MQTT connected & subscribed to {INBOX_TOPIC}")
+    except Exception as e:
+        log(f"❌ MQTT connection failed (App läuft weiter): {e}")
 
 
 # Wichtig: erst hier aufrufen
@@ -219,14 +225,23 @@ def now_str(fmt: str = "%d.%m.%Y %H:%M") -> str:
 # ----------------- Settings -----------------
 from pymongo import MongoClient
 
+# FIX: Globaler Client-Cache, um Connection-Leaks zu vermeiden
+_mongo_client: Optional[MongoClient] = None
+
 def _get_settings_collection():
-    # nutzt denselben Mongo-Client wie guest_tokens.py
+    global _mongo_client
     try:
         uri = os.getenv("MONGO_URI")
-        log("🔍 Verbinde mit MongoDB URI:", uri)
-        client = MongoClient(uri)
-        db = client.get_database("printer")
-        log("✅ Verbindung zu Mongo-DB 'printer' hergestellt.")
+        if not uri:
+            return None
+        
+        # Singleton Pattern: Nur verbinden, wenn noch nicht geschehen
+        if _mongo_client is None:
+            log("🔍 Verbinde mit MongoDB URI (Settings)...")
+            _mongo_client = MongoClient(uri)
+            log("✅ Verbindung zu Mongo-DB 'printer' hergestellt.")
+            
+        db = _mongo_client.get_database("printer")
         return db["settings"]
     except Exception as e:
         log("❌ MongoDB settings connection error:", repr(e))
@@ -235,10 +250,10 @@ def _get_settings_collection():
 def _load_settings() -> dict:
     try:
         coll = _get_settings_collection()
-        if coll is None:  # <-- hier geändert!
-            log("⚠️ Keine Collection gefunden, gebe leeres Dict zurück.")
+        if coll is None: 
+            # log("⚠️ Keine Collection gefunden, gebe leeres Dict zurück.") # zu laut
             return {}
-        log("📥 Lade settings aus Mongo...")
+        # log("📥 Lade settings aus Mongo...") # zu laut für jeden Check
         doc = coll.find_one({"_id": "settings"})
         return doc["data"] if doc and "data" in doc else {}
     except Exception as e:
@@ -248,7 +263,7 @@ def _load_settings() -> dict:
 def _save_settings(data: dict):
     try:
         coll = _get_settings_collection()
-        if coll is None:  # <-- hier geändert!
+        if coll is None: 
             log("⚠️ MongoDB nicht verfügbar, settings nicht gespeichert.")
             return
         log("💾 Speichere settings in Mongo:", data)
@@ -258,7 +273,7 @@ def _save_settings(data: dict):
         log("❌ settings speichern fehlgeschlagen:", repr(e))
 
 _last_reload = 0
-_reload_interval = 3  # Sekunden (du kannst das anpassen)
+_reload_interval = 3  # Sekunden
 
 def _reload_settings_if_changed():
     global SETTINGS, _last_reload
@@ -266,7 +281,7 @@ def _reload_settings_if_changed():
     if now - _last_reload < _reload_interval:
         return  # 👈 zu früh, überspringen
     _last_reload = now
-    log("📥 Lade settings aus Mongo...")
+    # log("📥 Lade settings aus Mongo...") 
     new_data = _load_settings()
     if new_data and new_data != SETTINGS:
         SETTINGS = new_data
@@ -455,8 +470,15 @@ def mqtt_publish_image_base64(b64_png: str, cut_paper: int = 1,
         "cut_paper": cut_paper,
         "source": "printer"
     }
-    log(f"MQTT publish → topic={PRINTER_TOPIC} qos={PUBLISH_QOS} bytes={len(b64_png)}")
-    client.publish(PRINTER_TOPIC, json.dumps(payload), qos=PUBLISH_QOS, retain=False)
+    # Nur publishen, wenn Client existiert und verbunden ist
+    if client:
+        try:
+            log(f"MQTT publish → topic={PRINTER_TOPIC} qos={PUBLISH_QOS} bytes={len(b64_png)}")
+            client.publish(PRINTER_TOPIC, json.dumps(payload), qos=PUBLISH_QOS, retain=False)
+        except Exception as e:
+            log(f"⚠️ MQTT Publish failed: {e}")
+    else:
+        log("⚠️ MQTT client not ready, cannot publish.")
 
 # ----------------- Receipt Config -----------------
 
