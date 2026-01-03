@@ -69,7 +69,15 @@ def _try_publish(path: Path) -> bool:
     try:
         with open(path, "r", encoding="utf-8") as f:
             job = json.load(f)
+    except json.JSONDecodeError:
+        print(f"[queue] 🗑️ Korrupte JSON-Datei erkannt und gelöscht: {path.name}")
+        path.unlink(missing_ok=True)
+        return False
+    except Exception as e:
+        print(f"[queue] ⚠️ Fehler beim Lesen von {path.name}: {e}")
+        return False
 
+    try:
         b64 = job["b64"]
         cut = int(job.get("cut", 1))
 
