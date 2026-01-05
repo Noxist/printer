@@ -1,4 +1,6 @@
 # ui_html.py
+from fastapi.responses import HTMLResponse
+
 from logic import SET_KEYS, cfg_get
 
 def html_page(title: str, content: str, show_logout: bool = False) -> str:
@@ -24,6 +26,23 @@ def html_page(title: str, content: str, show_logout: bool = False) -> str:
         --primary-hover: #2ea043;
         --danger: #da3633;
         --input-bg: #0d1117;
+        --status-bg: #21262d;
+        --status-shadow: rgba(63,185,80,0.3);
+    }
+    @media (prefers-color-scheme: light) {
+        :root {
+            --bg: #f6f8fa;
+            --card-bg: #ffffff;
+            --border: #d0d7de;
+            --text: #24292f;
+            --text-muted: #57606a;
+            --primary: #2da44e;
+            --primary-hover: #2c974b;
+            --danger: #cf222e;
+            --input-bg: #ffffff;
+            --status-bg: #f0f2f6;
+            --status-shadow: rgba(45,164,78,0.25);
+        }
     }
     * { box-sizing: border-box; }
     body {
@@ -38,7 +57,7 @@ def html_page(title: str, content: str, show_logout: bool = False) -> str:
     a:hover { text-decoration: underline; }
     
     /* Nav & Header */
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; }
     .nav { display: flex; gap: 15px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
     
     /* Cards & Forms */
@@ -74,17 +93,26 @@ def html_page(title: str, content: str, show_logout: bool = False) -> str:
     
     /* Printer Status Indicator */
     .status-indicator {
-        font-size: 0.85rem; font-weight: bold;
-        display: flex; align-items: center; gap: 6px;
-        padding: 4px 8px; border-radius: 12px; background: #21262d; border: 1px solid var(--border);
+        font-size: 0.85rem; font-weight: 700; letter-spacing: 0.2px;
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 6px 10px; border-radius: 12px; background: var(--status-bg); border: 1px solid var(--border);
+        color: var(--text); min-width: 132px; justify-content: center;
     }
     .dot {
-        width: 10px; height: 10px; border-radius: 50%;
+        width: 12px; height: 12px; border-radius: 50%;
         background-color: #8b949e; /* default grey */
         box-shadow: 0 0 4px rgba(0,0,0,0.5);
+        transition: background-color 0.2s ease, box-shadow 0.2s ease;
     }
-    .dot.on { background-color: #3fb950; box-shadow: 0 0 6px #3fb950; }
-    .dot.off { background-color: #f85149; }
+    .dot.on { background-color: #2fbf71; box-shadow: 0 0 8px var(--status-shadow); }
+    .dot.off { background-color: #e5534b; box-shadow: 0 0 4px rgba(229,83,75,0.35); }
+    .dot.unknown { background-color: #8b949e; box-shadow: 0 0 4px rgba(0,0,0,0.2); }
+
+    @media (max-width: 520px) {
+        body { padding: 16px; }
+        .header { flex-direction: column; align-items: flex-start; }
+        .status-indicator { width: 100%; justify-content: flex-start; }
+    }
     """
 
     script = """
@@ -96,15 +124,25 @@ def html_page(title: str, content: str, show_logout: bool = False) -> str:
             .then(d => {
                 const dot = document.getElementById('p-dot');
                 const txt = document.getElementById('p-txt');
-                if(d.online) {
+                const hasIp = Boolean(d.ip && d.ip !== 'Not Configured');
+                dot.className = 'dot unknown';
+                txt.textContent = hasIp ? 'Checking…' : 'Unknown';
+
+                if (d.online === true) {
                     dot.className = 'dot on';
-                    txt.textContent = 'ON';
-                } else {
+                    txt.textContent = 'Printer ON';
+                } else if (d.online === false && hasIp) {
                     dot.className = 'dot off';
-                    txt.textContent = 'OFF';
+                    txt.textContent = 'Printer OFF';
                 }
             })
-            .catch(e => console.log('Status poll error', e));
+            .catch(e => {
+                console.log('Status poll error', e);
+                const dot = document.getElementById('p-dot');
+                const txt = document.getElementById('p-txt');
+                dot.className = 'dot unknown';
+                txt.textContent = 'Status unavailable';
+            });
     }
     // Poll every 5 seconds
     setInterval(updateStatus, 5000);
