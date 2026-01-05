@@ -17,6 +17,10 @@ _HTML_BASE = """
  <header class="top">
   <div class="top-inner wrap">
     <a href="/ui" class="title" style="text-decoration:none; color:inherit;">Receipt Printer</a>
+    <div class="status-pill" id="status-pill" role="status" aria-live="polite">
+      <span class="status-dot"></span>
+      <span class="status-text">Checking…</span>
+    </div>
     <div class="spacer"></div>
     <nav class="nav" id="main-nav">
       <a class="link" href="/ui">Printer</a>
@@ -211,6 +215,14 @@ _CSS = r"""
     background:color-mix(in srgb, var(--bg) 80%, transparent); border-bottom:1px solid var(--line); z-index:10}
   .top-inner{display:flex; align-items:center; gap:14px; padding:12px clamp(12px,3vw,24px)}
   .title{font-weight:700; font-size:1.1rem; letter-spacing:.2px}
+  .status-pill{display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
+    border:1px solid var(--line); background:color-mix(in srgb, var(--card) 92%, transparent);
+    color:var(--muted); font-weight:600; font-size:.92rem; min-width:150px; justify-content:flex-start;}
+  .status-dot{width:10px; height:10px; border-radius:999px; background:var(--muted); box-shadow:0 0 0 4px color-mix(in srgb, currentColor 12%, transparent);}
+  .status-pill.ok{color:#16a34a; border-color:color-mix(in srgb, #16a34a 40%, var(--line)); background:color-mix(in srgb, #16a34a 12%, var(--card));}
+  .status-pill.ok .status-dot{background:#16a34a;}
+  .status-pill.err{color:#ef4444; border-color:color-mix(in srgb, #ef4444 40%, var(--line)); background:color-mix(in srgb, #ef4444 12%, var(--card));}
+  .status-pill.err .status-dot{background:#ef4444;}
   .spacer{flex:1}
   .link{color:var(--muted); text-decoration:none; font-size:.95rem; margin-left:16px}
   .link:hover{color:var(--text); text-decoration:underline}
@@ -299,6 +311,8 @@ document.addEventListener("DOMContentLoaded",()=>{{
   const input=document.getElementById("imgfile");
   const dropZone=document.getElementById("drop-zone");
   const fileChosen=document.getElementById("file-chosen");
+  const statusPill=document.getElementById("status-pill");
+  const statusText=statusPill ? statusPill.querySelector(".status-text") : null;
   
   if(input){{
     input.addEventListener("change", function(){{
@@ -326,6 +340,28 @@ document.addEventListener("DOMContentLoaded",()=>{{
       }}
     }});
   }}
+
+  async function refreshStatus(){{
+    if(!statusPill || !statusText) return;
+    const setState=(state,label,hint)=>{{
+      statusPill.classList.remove("ok","err");
+      if(state) statusPill.classList.add(state);
+      statusText.textContent=label;
+      statusPill.title=hint||"";
+    }};
+    try{{
+      const res=await fetch("/ui/status",{{cache:"no-store"}});
+      if(!res.ok) throw new Error(res.status+"");
+      const data=await res.json();
+      const online=!!data.online;
+      const detail=data.detail||"";
+      setState(online?"ok":"err", online?"Printer online":"Printer offline", detail);
+    }}catch(e){{
+      setState("err","Status unknown","Could not fetch status");
+    }}
+  }}
+  refreshStatus();
+  setInterval(refreshStatus, 30000);
 }});
 
 // --- Guest Mode Cleanup ---
