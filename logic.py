@@ -1,6 +1,6 @@
 # logic.py — robust print rendering (fonts fallback, no black blocks), Swiss-safe (kein ss)
 
-import os, ssl, json, time, base64, uuid, io, hmac, hashlib, sys, random
+import os, ssl, json, time, base64, uuid, io, hmac, hashlib, sys, random, socket
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import List, Optional
@@ -47,6 +47,7 @@ DEBUG_SAVE_LAST = os.getenv("DEBUG_SAVE_LAST", "0").lower() in ("1","true","yes"
 
 # ----------------- MQTT -----------------
 client = None
+_last_status: dict[str, object] | None = None
 
 def log(*a):
     print("[printer]", *a, file=sys.stdout, flush=True)
@@ -215,6 +216,62 @@ def init_mqtt():
 
 # Wichtig: erst hier aufrufen
 init_mqtt()
+
+
+# ----------------- Printer Status (UI indicator) -----------------
+
+STATUS_CACHE_SECS = int(os.getenv("PRINTER_STATUS_CACHE", "25"))
+STATUS_TCP_TIMEOUT = float(os.getenv("PRINTER_STATUS_TCP_TIMEOUT", "2.5"))
+PRINTER_PORT = int(os.getenv("PRINTER_PORT", "9100"))
+
+def _probe_printer_tcp(ip: str) -> tuple[bool, str]:
+    try:
+        with socket.create_connection((ip, PRINTER_PORT), timeout=STATUS_TCP_TIMEOUT):
+            return True, f"TCP {ip}:{PRINTER_PORT} reachable"
+    except Exception as e:
+        return False, f"TCP probe failed: {e}" if str(e) else "TCP probe failed"
+
+
+def _probe_printer_mqtt() -> tuple[bool, str]:
+    if client is None:
+        return False, "MQTT client not initialized"
+    try:
+        if hasattr(client, "is_connected") and not client.is_connected():
+            return False, "MQTT disconnected"
+        payload = {
+            "data_type": "status_ping",
+            "source": "printer_status",
+            "ts": int(time.time() * 1000),
+        }
+        info = client.publish(PRINTER_TOPIC, json.dumps(payload), qos=0, retain=False)
+        rc = getattr(info, "rc", 0)
+        if rc != 0:
+            return False, f"MQTT publish rc={rc}"
+        return True, "MQTT publish succeeded"
+    except Exception as e:
+        return False, f"MQTT probe failed: {e}"
+
+
+def printer_status(force: bool = False) -> dict[str, object]:
+    global _last_status
+
+    now = time.time()
+    if not force and _last_status and (now - float(_last_status.get("checked_at", 0))) < STATUS_CACHE_SECS:
+        return _last_status
+
+    method = "tcp" if os.getenv("PRINTER_IP") else "mqtt"
+    if os.getenv("PRINTER_IP"):
+        online, detail = _probe_printer_tcp(os.getenv("PRINTER_IP"))
+    else:
+        online, detail = _probe_printer_mqtt()
+
+    _last_status = {
+        "online": bool(online),
+        "checked_at": now,
+        "method": method,
+        "detail": detail,
+    }
+    return _last_status
 
 
 # ----------------- Zeit/Format -----------------

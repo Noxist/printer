@@ -27,6 +27,7 @@ from logic import (
     ReceiptCfg, check_api_key, require_ui_auth, issue_cookie, ui_auth_state,
     cfg_get, SETTINGS, SET_KEYS, _save_settings, _reload_settings_if_changed,
     GUESTS, guest_consume_or_error, _guest_check_len_ok, GUEST_MAX_CHARS,
+    printer_status,
 )
 from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html, login_page
 
@@ -117,6 +118,23 @@ def health():
 def ok():
     from logic import TOPIC, PUBLISH_QOS
     return {"ok": True, "topic": TOPIC, "qos": PUBLISH_QOS}
+
+@app.get("/ui/status")
+def ui_status():
+    data = printer_status()
+    return JSONResponse(
+        {
+            "online": data.get("online", False),
+            "checked_at": data.get("checked_at"),
+            "method": data.get("method"),
+            "detail": data.get("detail"),
+        },
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 # --- Routes: API (JSON) -------------------------------------------------------
 @app.post("/print")
