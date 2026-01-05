@@ -1,11 +1,20 @@
 # logic.py — robust print rendering (fonts fallback, no black blocks), Swiss-safe (kein ss)
 
-import os, ssl, json, time, base64, uuid, io, hmac, hashlib, sys, random, socket, threading
+import os, ssl, json, time, base64, uuid, io, hmac, hashlib, sys, random
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import List, Optional
 
 from PIL import Image, ImageDraw, ImageFont
+
+# Presence & status handling (isolated module)
+from status_monitor import (
+    attach_client,
+    handle_presence_message,
+    subscription_topics,
+    printer_status,
+    set_logger,
+)
 
 # FastAPI helpers (falls von main.py genutzt)
 from fastapi import HTTPException, Request, Response
@@ -47,35 +56,12 @@ DEBUG_SAVE_LAST = os.getenv("DEBUG_SAVE_LAST", "0").lower() in ("1","true","yes"
 
 # ----------------- MQTT -----------------
 client = None
-_last_status: dict[str, object] | None = None
-
-
-class _PrinterPresence:
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._last_seen = 0.0
-        self._last_probe = 0.0
-
-    def mark_seen(self, ts: float | None = None) -> None:
-        with self._lock:
-            self._last_seen = ts or time.time()
-
-    def last_seen(self) -> float:
-        with self._lock:
-            return self._last_seen
-
-    def should_probe(self, now: float, min_interval: float) -> bool:
-        with self._lock:
-            if now - self._last_probe < min_interval:
-                return False
-            self._last_probe = now
-            return True
-
-
-presence = _PrinterPresence()
 
 def log(*a):
     print("[printer]", *a, file=sys.stdout, flush=True)
+
+
+set_logger(log)
 
 def _handle_incoming_mqtt(_client, _userdata, msg):
     from queue_print import enqueue_base64_png
@@ -85,11 +71,11 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
     topic = msg.topic.decode("utf-8", errors="ignore") if isinstance(msg.topic, (bytes, bytearray)) else msg.topic
 
     # Heartbeat & active probe response handling (fire & forget)
-    if topic in (HEARTBEAT_TOPIC, PRINT_SUCCESS_TOPIC):
-        presence.mark_seen()
-        if os.getenv("DEBUG_HEARTBEAT_LOG", "0").lower() in ("1","true","yes","on"):
+    if handle_presence_message(topic, msg.payload):
+        t = topic.decode("utf-8", errors="ignore") if isinstance(topic, (bytes, bytearray)) else topic
+        if t == HEARTBEAT_TOPIC and os.getenv("DEBUG_HEARTBEAT_LOG", "0").lower() in ("1","true","yes","on"):
             log("🔔 Heartbeat received.")
-        # Heartbeats do not carry payloads we care about here.
+        # Heartbeats and success pings do not carry payloads we care about here.
         if topic != INBOX_TOPIC:
             return
 
@@ -226,6 +212,7 @@ def init_mqtt():
     PRINTER_TOPIC = os.getenv("PRINTER_TOPIC", "Prn20B1B50C2199")  # Dein Drucker-Topic
     HEARTBEAT_TOPIC = os.getenv("PRINTER_HEARTBEAT_TOPIC", "Hearbeat")
     PRINT_SUCCESS_TOPIC = os.getenv("PRINT_SUCCESS_TOPIC", "PrintSuccess")
+    PRINT_SUCCESS_TOPIC_ALT = os.getenv("PRINT_SUCCESS_ALT_TOPIC", "PrintSucces")
 
     # FIX: paho-mqtt 2.x erfordert oft explizite API-Version
     try:
@@ -244,107 +231,21 @@ def init_mqtt():
     # Verbindung aufbauen (mit Fehlerbehandlung, damit App nicht crasht)
     try:
         client.connect(MQTT_HOST, MQTT_PORT, 60)
+        monitor_topics = subscription_topics(PUBLISH_QOS)
         # Inbox + Heartbeat/Status Topics abonnieren
-        client.subscribe(
-            [
-                (INBOX_TOPIC, PUBLISH_QOS),
-                (HEARTBEAT_TOPIC, 1),
-                (PRINT_SUCCESS_TOPIC, 1),
-            ]
-        )
+        client.subscribe([(INBOX_TOPIC, PUBLISH_QOS), *monitor_topics])
         client.loop_start()
-        log(f"✅ MQTT connected & subscribed to {INBOX_TOPIC}, {HEARTBEAT_TOPIC}, {PRINT_SUCCESS_TOPIC}")
+        attach_client(client)
+        log(
+            f"✅ MQTT connected & subscribed to "
+            f"{INBOX_TOPIC}, {HEARTBEAT_TOPIC}, {PRINT_SUCCESS_TOPIC}, {PRINT_SUCCESS_TOPIC_ALT}"
+        )
     except Exception as e:
         log(f"❌ MQTT connection failed (App läuft weiter): {e}")
 
 
 # Wichtig: erst hier aufrufen
 init_mqtt()
-
-
-# ----------------- Printer Status (UI indicator) -----------------
-
-STATUS_CACHE_SECS = int(os.getenv("PRINTER_STATUS_CACHE", "25"))
-STATUS_TCP_TIMEOUT = float(os.getenv("PRINTER_STATUS_TCP_TIMEOUT", "2.5"))
-PRINTER_PORT = int(os.getenv("PRINTER_PORT", "9100"))
-ACTIVE_PROBE_INTERVAL = float(os.getenv("PRINTER_PROBE_INTERVAL", "10"))
-HEARTBEAT_ONLINE_WINDOW = float(os.getenv("PRINTER_HEARTBEAT_WINDOW", "60"))
-
-def _probe_printer_tcp(ip: str) -> tuple[bool, str]:
-    try:
-        with socket.create_connection((ip, PRINTER_PORT), timeout=STATUS_TCP_TIMEOUT):
-            return True, f"TCP {ip}:{PRINTER_PORT} reachable"
-    except Exception as e:
-        return False, f"TCP probe failed: {e}" if str(e) else "TCP probe failed"
-
-
-def _send_printer_probe(now: float) -> tuple[bool, str]:
-    if client is None:
-        return False, "MQTT client not initialized"
-    try:
-        if hasattr(client, "is_connected") and not client.is_connected():
-            return False, "MQTT disconnected"
-        if not presence.should_probe(now, ACTIVE_PROBE_INTERVAL):
-            return False, "Probe throttled"
-        info = client.publish(PRINTER_TOPIC, b"\x01\x00", qos=1, retain=False)
-        rc = getattr(info, "rc", 0)
-        if rc != 0:
-            return False, f"MQTT publish rc={rc}"
-        return True, "Active MQTT probe sent"
-    except Exception as e:
-        return False, f"MQTT probe failed: {e}"
-
-
-def printer_status(force: bool = False) -> dict[str, object]:
-    global _last_status
-
-    now = time.time()
-    last_seen = presence.last_seen()
-    delta = now - last_seen if last_seen else float("inf")
-
-    detail_parts: list[str] = []
-    if last_seen:
-        detail_parts.append(f"Last heartbeat {delta:.1f}s ago.")
-    else:
-        detail_parts.append("No heartbeat received yet.")
-
-    # Primary: passive heartbeat
-    if delta < HEARTBEAT_ONLINE_WINDOW:
-        _last_status = {
-            "online": True,
-            "checked_at": now,
-            "method": "mqtt_heartbeat",
-            "detail": "Heartbeat fresh.",
-            "last_seen": last_seen,
-        }
-        return _last_status
-
-    # Backup: active MQTT probe (fire & forget)
-    _probe_ok, probe_detail = _send_printer_probe(now)
-    detail_parts.append(probe_detail)
-    method = "mqtt_probe"
-    online = False
-
-    # Tertiary: TCP probe (only if configured)
-    printer_ip = os.getenv("PRINTER_IP")
-    if printer_ip:
-        if not force and _last_status and _last_status.get("method") == "tcp":
-            if now - float(_last_status.get("checked_at", 0)) < STATUS_CACHE_SECS:
-                # reuse recent tcp result to avoid blocking
-                return _last_status
-        tcp_online, tcp_detail = _probe_printer_tcp(printer_ip)
-        online = tcp_online
-        method = "tcp"
-        detail_parts.append(tcp_detail)
-
-    _last_status = {
-        "online": bool(online),
-        "checked_at": now,
-        "method": method,
-        "detail": " ".join(detail_parts),
-        "last_seen": last_seen,
-    }
-    return _last_status
 
 
 # ----------------- Zeit/Format -----------------
