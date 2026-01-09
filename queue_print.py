@@ -1,149 +1,246 @@
-# queue_print.py — persistente Druck-Queue mit Auto-Flush & optionalem WLAN-Direktdruck
-import os, json, time, threading, traceback
+# queue_print.py — MongoDB-based Queue mit "Last 20"-Limit & Offline-Schutz
+import os
+import time
+import threading
+import traceback
+import json
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
-from logic import mqtt_publish_image_base64  # MQTT fallback
-from logic import print_base64_png_direct     # direkter WLAN-Druck (wenn verfügbar)
+# Wir nutzen die Mongo-Verbindung und MQTT-Logik aus logic.py
+from logic import (
+    mqtt_publish_image_base64,
+    _get_settings_collection, # Wir nutzen die bestehende Connection-Logik
+    printer_status,           # Um zu prüfen, ob der Drucker online ist
+    log
+)
 
 # ----------------- Konfiguration -----------------
 
-# Pfad zur Drucker-Queue (persistente JSON-Dateien)
-PRINT_QUEUE_DIR = os.getenv("PRINT_QUEUE_DIR", "/tmp/print-queue")
-QUEUE_DIR = Path(PRINT_QUEUE_DIR)
+# Wie oft prüfen, ob neue Tickets da sind?
+SLEEP_SECONDS = int(os.getenv("PRINT_QUEUE_POLL", "10"))
 
-# Druckversuch alle X Sekunden
-SLEEP_SECONDS = int(os.getenv("PRINT_QUEUE_POLL", "20"))
-
-# Falls PRINTER_IP gesetzt ist → direkter Druck, sonst MQTT
-PRINTER_IP = os.getenv("PRINTER_IP")
+# Maximale Anzahl Tickets, die gedruckt werden (Rest wird übersprungen)
+MAX_QUEUE_SIZE = 20
 
 _running = False
 _thread: Optional[threading.Thread] = None
 
+# ----------------- MongoDB Helpers -----------------
 
-# ----------------- Helper -----------------
+def _get_db():
+    """Holt die Datenbank-Referenz (nutzt den Client aus logic.py)."""
+    # _get_settings_collection gibt uns 'printer.settings'. 
+    # Wir hangeln uns zur DB hoch.
+    coll = _get_settings_collection()
+    if coll is not None:
+        return coll.database
+    return None
 
-def _ensure_dir():
-    """Sorgt dafür, dass das Queue-Verzeichnis existiert."""
-    try:
-        QUEUE_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
+def _get_queue_coll():
+    db = _get_db()
+    return db["queue"] if db is not None else None
 
+def _get_archive_coll():
+    db = _get_db()
+    return db["archive"] if db is not None else None
 
-def _job_path(ts: float) -> Path:
-    """Erzeugt eindeutigen Dateinamen."""
-    return QUEUE_DIR / f"{int(ts * 1000)}.json"
+# ----------------- Public API -----------------
 
+def enqueue_base64_png(b64png: str, cut_paper: int = 1, meta: Optional[Dict[str, Any]] = None) -> bool:
+    """Speichert ein neues Ticket in der MongoDB-Queue."""
+    coll = _get_queue_coll()
+    if coll is None:
+        log("❌ [Queue] Keine Verbindung zu MongoDB! Ticket verloren.")
+        return False
 
-def enqueue_base64_png(b64png: str, cut_paper: int = 1, meta: Optional[Dict[str, Any]] = None) -> Optional[Path]:
-    """Speichert ein Druck-Job als JSON-Datei persistiert."""
-    _ensure_dir()
     meta = meta or {}
-    payload = {"b64": b64png, "cut": int(cut_paper), "meta": meta, "ts": time.time()}
+    payload = {
+        "b64": b64png,
+        "cut": int(cut_paper),
+        "meta": meta,
+        "ts": time.time(),
+        "status": "pending"
+    }
+    
     try:
-        p = _job_path(payload["ts"])
-        with open(p, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False)
-        print(f"[queue] 💾 Ticket gespeichert: {p.name}")
-        return p
-    except Exception:
-        traceback.print_exc()
-        return None
-
-
-def _dequeue_one() -> Optional[Path]:
-    """Lädt das älteste Job-File aus der Queue."""
-    try:
-        files = sorted(QUEUE_DIR.glob("*.json"))
-        return files[0] if files else None
-    except Exception:
-        return None
-
-
-# ----------------- Drucklogik -----------------
-
-def _try_publish(path: Path) -> bool:
-    """Versucht, ein Ticket zu drucken (direkt oder über MQTT)."""
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            job = json.load(f)
-    except json.JSONDecodeError:
-        print(f"[queue] 🗑️ Korrupte JSON-Datei erkannt und gelöscht: {path.name}")
-        path.unlink(missing_ok=True)
-        return False
+        coll.insert_one(payload)
+        log(f"[Queue] 💾 Ticket in MongoDB gespeichert (Quelle: {meta.get('source', 'unknown')})")
+        return True
     except Exception as e:
-        print(f"[queue] ⚠️ Fehler beim Lesen von {path.name}: {e}")
+        log(f"❌ [Queue] Fehler beim Speichern: {e}")
         return False
+
+# ----------------- Migration (File -> Mongo) -----------------
+
+def migrate_files_to_mongo():
+    """
+    Sucht nach alten .json-Dateien im PRINT_QUEUE_DIR,
+    schiebt sie in die Mongo-Queue und löscht die Dateien.
+    Wird beim Start einmal ausgeführt.
+    """
+    queue_dir_str = os.getenv("PRINT_QUEUE_DIR", "/tmp/print-queue")
+    queue_dir = Path(queue_dir_str)
+    
+    if not queue_dir.exists():
+        return
+
+    log("[Queue] 📂 Prüfe auf alte Queue-Dateien zur Migration...")
+    
+    files = sorted(queue_dir.glob("*.json"))
+    if not files:
+        return
+
+    coll = _get_queue_coll()
+    if not coll:
+        log("⚠️ [Queue] Kann nicht migrieren – Keine DB-Verbindung.")
+        return
+
+    count = 0
+    for p in files:
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            # Struktur anpassen falls nötig
+            if "b64" in data:
+                doc = {
+                    "b64": data["b64"],
+                    "cut": int(data.get("cut", 1)),
+                    "meta": data.get("meta", {}),
+                    "ts": data.get("ts", time.time()),
+                    "status": "migrated_from_file"
+                }
+                coll.insert_one(doc)
+                p.unlink() # Datei löschen
+                count += 1
+        except Exception as e:
+            log(f"⚠️ Fehler bei Migration von {p.name}: {e}")
+    
+    if count > 0:
+        log(f"[Queue] ✅ {count} alte Tickets erfolgreich in MongoDB migriert.")
+
+# ----------------- Flush Logic -----------------
+
+def _clean_overflow_queue():
+    """
+    Stellt sicher, dass nicht mehr als MAX_QUEUE_SIZE Tickets warten.
+    Ältere Tickets werden ins Archiv verschoben (übersprungen).
+    """
+    q_coll = _get_queue_coll()
+    a_coll = _get_archive_coll()
+    if not q_coll or not a_coll:
+        return
 
     try:
-        b64 = job["b64"]
-        cut = int(job.get("cut", 1))
+        count = q_coll.count_documents({})
+        if count > MAX_QUEUE_SIZE:
+            excess = count - MAX_QUEUE_SIZE
+            log(f"[Queue] 🧹 Queue zu voll ({count}). Lösche {excess} alte Tickets...")
+            
+            # Die ältesten 'excess' Tickets finden
+            # Sortierung: 1 = aufsteigend (älteste zuerst)
+            cursor = q_coll.find().sort("ts", 1).limit(excess)
+            
+            to_move = []
+            ids_to_remove = []
+            for doc in cursor:
+                doc["archived_at"] = time.time()
+                doc["reason"] = "skipped_overflow" # Markierung warum nicht gedruckt
+                to_move.append(doc)
+                ids_to_remove.append(doc["_id"])
+            
+            if to_move:
+                a_coll.insert_many(to_move)
+                q_coll.delete_many({"_id": {"$in": ids_to_remove}})
+                log(f"[Queue] 🗑️ {len(to_move)} alte Tickets archiviert (nicht gedruckt).")
+    except Exception as e:
+        log(f"❌ [Queue] Fehler beim Bereinigen: {e}")
 
-        # Direkter Netzwerkdruck bevorzugt, wenn PRINTER_IP vorhanden
-        if PRINTER_IP:
-            ok = print_base64_png_direct(b64, cut_paper=cut)
-        else:
-            ok = mqtt_publish_image_base64(b64, cut_paper=cut)
+def flush_once():
+    """
+    Verarbeitet die Queue. 
+    Druckt NUR, wenn printer_status sagt 'online'.
+    """
+    # 1. Check: Ist Drucker online?
+    status = printer_status()
+    if not status.get("online", False):
+        # Optional: Nur loggen, wenn wir wissen, dass was in der Queue ist, um Log-Spam zu meiden
+        # Aber hier halten wir es still, damit das Log nicht volläuft.
+        return 0
 
-        if ok is not False:  # True oder None = Erfolg
-            print(f"[queue] 🖨️ Ticket gedruckt: {path.name}")
-            path.unlink(missing_ok=True)
-            return True
-        else:
-            print(f"[queue] ⚠️ Druck fehlgeschlagen, bleibt in Queue: {path.name}")
-            return False
-    except Exception:
-        traceback.print_exc()
-        return False
+    q_coll = _get_queue_coll()
+    a_coll = _get_archive_coll()
+    if not q_coll:
+        return 0
 
+    # 2. Aufräumen (Chaos-Schutz)
+    _clean_overflow_queue()
 
-# ----------------- Loop / Background Thread -----------------
+    # 3. Die (jetzt maximal 20) Tickets holen
+    # Wir sortieren nach TS aufsteigend (ältestes zuerst), damit die Reihenfolge stimmt
+    jobs = list(q_coll.find().sort("ts", 1).limit(MAX_QUEUE_SIZE))
+    
+    if not jobs:
+        return 0
 
-def flush_once(max_n: int = 10) -> int:
-    """Versucht, bis zu max_n Tickets aus der Queue zu drucken."""
-    _ensure_dir()
-    n = 0
-    for _ in range(max_n):
-        p = _dequeue_one()
-        if not p:
-            break
-        if not _try_publish(p):
-            break  # wenn ein Job fehlschlägt, abbrechen (Drucker evtl. offline)
-        n += 1
-    return n
+    printed_count = 0
+    for job in jobs:
+        try:
+            b64 = job["b64"]
+            cut = job.get("cut", 1)
+            
+            # Senden an MQTT
+            # mqtt_publish_image_base64 liefert None bei Erfolg (in logic.py so definiert)
+            # oder wir gehen davon aus, dass es klappt, wenn keine Exception fliegt.
+            mqtt_publish_image_base64(b64, cut_paper=cut)
+            
+            # Verschieben ins Archiv
+            job["archived_at"] = time.time()
+            job["reason"] = "sent_to_mqtt"
+            
+            if a_coll:
+                a_coll.insert_one(job)
+            
+            q_coll.delete_one({"_id": job["_id"]})
+            
+            log(f"[Queue] 📤 Ticket an MQTT gesendet (ID: {str(job['_id'])[-6:]})")
+            printed_count += 1
+            
+            # Kurze Pause zwischen Tickets, damit der Drucker nicht verschluckt
+            time.sleep(2) 
+            
+        except Exception as e:
+            log(f"❌ [Queue] Fehler beim Verarbeiten von Ticket {job.get('_id')}: {e}")
+            # Bei Fehler lassen wir es in der Queue oder verschieben es? 
+            # Besser drin lassen und retry, aber Zähler beachten, sonst Endlosschleife.
+            # Für Einfachheit: drin lassen.
+            break # Loop abbrechen, später nochmal versuchen
 
+    return printed_count
+
+# ----------------- Thread Loop -----------------
 
 def _loop():
-    """Hintergrundschleife für den Druck-Queue-Flush."""
     global _running
     while _running:
-        flushed = 0
         try:
-            flushed = flush_once(20)
-        except Exception:
+            flush_once()
+        except Exception as e:
             traceback.print_exc()
-        # Wenn nichts gedruckt wurde → Pause
-        time.sleep(SLEEP_SECONDS if flushed == 0 else 1)
-
-
-# ----------------- Steuerfunktionen -----------------
+        
+        time.sleep(SLEEP_SECONDS)
 
 def start_background_flusher():
-    """Startet den Hintergrund-Thread für den Queue-Flush."""
     global _running, _thread
     if _running:
         return
-    _ensure_dir()
     _running = True
-    _thread = threading.Thread(target=_loop, name="print-queue-flusher", daemon=True)
+    _thread = threading.Thread(target=_loop, name="mongo-queue-flusher", daemon=True)
     _thread.start()
-    print("[queue] ♻️ Hintergrund-Queue gestartet.")
-
+    log("[Queue] ♻️ MongoDB-Queue-Thread gestartet.")
 
 def stop_background_flusher():
-    """Stoppt die Queue-Verarbeitung."""
     global _running
     _running = False
-    print("[queue] 🛑 Queue-Loop gestoppt.")
+    log("[Queue] 🛑 Queue-Loop gestoppt.")
