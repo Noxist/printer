@@ -19,7 +19,7 @@ from PIL import Image
 # --- Local Modules ---
 from queue_print import (
     start_background_flusher, stop_background_flusher, 
-    enqueue_base64_png, PRINT_QUEUE_DIR
+    enqueue_base64_png, migrate_files_to_mongo
 )
 from routes_sources import router as sources_router
 from logic import (
@@ -36,15 +36,25 @@ from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html, login
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("[main] 🧩 Starte Printer-App …")
+    
+    # 1. Alte Queue-Dateien retten!
     try:
-        stop_background_flusher()
-        print("[main] 🛑 Alte Queue-Threads gestoppt.")
+        migrate_files_to_mongo()
     except Exception as e:
-        print("[main] ⚠️ Konnte alten Thread nicht stoppen:", e)
+        print(f"[main] ⚠️ Fehler bei der Migration: {e}")
+
+    # 2. Flusher starten
+    try:
+        # Wir stoppen sicherheitshalber alte Instanzen, falls uvicorn neu lädt
+        stop_background_flusher() 
+    except: 
+        pass
     
     start_background_flusher()
     print("[main] ✅ Druck-Queue frisch gestartet.")
+    
     yield
+    
     stop_background_flusher()
     print("[main] 👋 App shutdown.")
 
