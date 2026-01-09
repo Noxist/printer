@@ -92,7 +92,7 @@ def migrate_files_to_mongo():
         return
 
     coll = _get_queue_coll()
-    if not coll:
+    if coll is None:  # <--- KORRIGIERT (war 'if not coll:')
         log("⚠️ [Queue] Kann nicht migrieren – Keine DB-Verbindung.")
         return
 
@@ -129,7 +129,8 @@ def _clean_overflow_queue():
     """
     q_coll = _get_queue_coll()
     a_coll = _get_archive_coll()
-    if not q_coll or not a_coll:
+    # KORRIGIERT: Expliziter Check auf None statt 'not object'
+    if q_coll is None or a_coll is None:
         return
 
     try:
@@ -165,13 +166,13 @@ def flush_once():
     # 1. Check: Ist Drucker online?
     status = printer_status()
     if not status.get("online", False):
-        # Optional: Nur loggen, wenn wir wissen, dass was in der Queue ist, um Log-Spam zu meiden
-        # Aber hier halten wir es still, damit das Log nicht volläuft.
         return 0
 
     q_coll = _get_queue_coll()
     a_coll = _get_archive_coll()
-    if not q_coll:
+    
+    # KORRIGIERT: Expliziter Check auf None
+    if q_coll is None:
         return 0
 
     # 2. Aufräumen (Chaos-Schutz)
@@ -191,15 +192,14 @@ def flush_once():
             cut = job.get("cut", 1)
             
             # Senden an MQTT
-            # mqtt_publish_image_base64 liefert None bei Erfolg (in logic.py so definiert)
-            # oder wir gehen davon aus, dass es klappt, wenn keine Exception fliegt.
             mqtt_publish_image_base64(b64, cut_paper=cut)
             
             # Verschieben ins Archiv
             job["archived_at"] = time.time()
             job["reason"] = "sent_to_mqtt"
             
-            if a_coll:
+            # KORRIGIERT: Expliziter Check auf None
+            if a_coll is not None:
                 a_coll.insert_one(job)
             
             q_coll.delete_one({"_id": job["_id"]})
@@ -207,14 +207,11 @@ def flush_once():
             log(f"[Queue] 📤 Ticket an MQTT gesendet (ID: {str(job['_id'])[-6:]})")
             printed_count += 1
             
-            # Kurze Pause zwischen Tickets, damit der Drucker nicht verschluckt
+            # Kurze Pause zwischen Tickets
             time.sleep(2) 
             
         except Exception as e:
             log(f"❌ [Queue] Fehler beim Verarbeiten von Ticket {job.get('_id')}: {e}")
-            # Bei Fehler lassen wir es in der Queue oder verschieben es? 
-            # Besser drin lassen und retry, aber Zähler beachten, sonst Endlosschleife.
-            # Für Einfachheit: drin lassen.
             break # Loop abbrechen, später nochmal versuchen
 
     return printed_count
