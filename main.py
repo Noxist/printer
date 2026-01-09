@@ -115,9 +115,9 @@ def health():
     return "OK"
 
 @app.get("/")
-def ok():
-    from logic import TOPIC, PUBLISH_QOS
-    return {"ok": True, "topic": TOPIC, "qos": PUBLISH_QOS}
+def root_redirect():
+    # Leitet sofort auf das Dashboard um
+    return RedirectResponse("/ui", status_code=303)
 
 @app.get("/ui/status")
 def ui_status():
