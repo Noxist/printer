@@ -579,25 +579,29 @@ async def debug_last():
 
 @app.get("/queue/list")
 async def list_queue():
+    from logic import _get_settings_collection
     try:
-        files = sorted([f for f in os.listdir(PRINT_QUEUE_DIR) if f.endswith(".json")])
-        result = []
-        for f in files:
-            path = os.path.join(PRINT_QUEUE_DIR, f)
-            size = os.path.getsize(path)
-            ts = os.path.getmtime(path)
-            with open(path, "r", encoding="utf-8") as fh:
-                try:
-                    data = json.load(fh)
-                    meta = data.get("meta", {})
-                except Exception: meta = {}
-            result.append({
-                "file": f,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)),
-                "size_bytes": size,
-                "meta": meta
-            })
-        return JSONResponse({"count": len(result), "jobs": result})
+        # Verbindung zur Queue-Collection herstellen
+        coll_settings = _get_settings_collection()
+        if coll_settings is None:
+             return JSONResponse({"error": "Keine DB-Verbindung"}, status_code=500)
+        
+        db = coll_settings.database
+        queue_coll = db["queue"]
+
+        # Alle Tickets holen (ohne das riesige Bild-Datenfeld "b64", damit es lesbar bleibt)
+        # Wir sortieren nach Zeitstempel (ts), älteste zuerst
+        cursor = queue_coll.find({}, {"b64": 0}).sort("ts", 1)
+        
+        jobs = []
+        for doc in cursor:
+            # ObjectId und Zeitstempel lesbar machen
+            doc["_id"] = str(doc["_id"])
+            if "ts" in doc:
+                doc["time_readable"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(doc["ts"]))
+            jobs.append(doc)
+
+        return JSONResponse({"count": len(jobs), "jobs": jobs})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
