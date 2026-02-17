@@ -51,7 +51,7 @@ def enqueue_base64_png(b64png: str, cut_paper: int = 1, meta: Optional[Dict[str,
     """Speichert ein neues Ticket in der MongoDB-Queue."""
     coll = _get_queue_coll()
     if coll is None:
-        log("❌ [Queue] Keine Verbindung zu MongoDB! Ticket verloren.")
+        log("[Queue] Keine Verbindung zu MongoDB! Ticket verloren.")
         return False
 
     meta = meta or {}
@@ -65,10 +65,10 @@ def enqueue_base64_png(b64png: str, cut_paper: int = 1, meta: Optional[Dict[str,
     
     try:
         coll.insert_one(payload)
-        log(f"[Queue] 💾 Ticket in MongoDB gespeichert (Quelle: {meta.get('source', 'unknown')})")
+        log(f"[Queue] Ticket in MongoDB gespeichert (Quelle: {meta.get('source', 'unknown')})")
         return True
     except Exception as e:
-        log(f"❌ [Queue] Fehler beim Speichern: {e}")
+        log(f"[Queue] Fehler beim Speichern: {e}")
         return False
 
 # ----------------- Migration (File -> Mongo) -----------------
@@ -85,7 +85,7 @@ def migrate_files_to_mongo():
     if not queue_dir.exists():
         return
 
-    log("[Queue] 📂 Prüfe auf alte Queue-Dateien zur Migration...")
+    log("[Queue] Prüfe auf alte Queue-Dateien zur Migration...")
     
     files = sorted(queue_dir.glob("*.json"))
     if not files:
@@ -93,7 +93,7 @@ def migrate_files_to_mongo():
 
     coll = _get_queue_coll()
     if coll is None:  # <--- KORRIGIERT (war 'if not coll:')
-        log("⚠️ [Queue] Kann nicht migrieren – Keine DB-Verbindung.")
+        log("[Queue] Kann nicht migrieren – Keine DB-Verbindung.")
         return
 
     count = 0
@@ -115,10 +115,10 @@ def migrate_files_to_mongo():
                 p.unlink() # Datei löschen
                 count += 1
         except Exception as e:
-            log(f"⚠️ Fehler bei Migration von {p.name}: {e}")
+            log(f"Fehler bei Migration von {p.name}: {e}")
     
     if count > 0:
-        log(f"[Queue] ✅ {count} alte Tickets erfolgreich in MongoDB migriert.")
+        log(f"[Queue] {count} alte Tickets erfolgreich in MongoDB migriert.")
 
 # ----------------- Flush Logic -----------------
 
@@ -137,7 +137,7 @@ def _clean_overflow_queue():
         count = q_coll.count_documents({})
         if count > MAX_QUEUE_SIZE:
             excess = count - MAX_QUEUE_SIZE
-            log(f"[Queue] 🧹 Queue zu voll ({count}). Lösche {excess} alte Tickets...")
+            log(f"[Queue] Queue zu voll ({count}). Lösche {excess} alte Tickets...")
             
             # Die ältesten 'excess' Tickets finden
             # Sortierung: 1 = aufsteigend (älteste zuerst)
@@ -154,9 +154,9 @@ def _clean_overflow_queue():
             if to_move:
                 a_coll.insert_many(to_move)
                 q_coll.delete_many({"_id": {"$in": ids_to_remove}})
-                log(f"[Queue] 🗑️ {len(to_move)} alte Tickets archiviert (nicht gedruckt).")
+                log(f"[Queue] {len(to_move)} alte Tickets archiviert (nicht gedruckt).")
     except Exception as e:
-        log(f"❌ [Queue] Fehler beim Bereinigen: {e}")
+        log(f"[Queue] Fehler beim Bereinigen: {e}")
 
 def flush_once():
     """
@@ -204,14 +204,14 @@ def flush_once():
             
             q_coll.delete_one({"_id": job["_id"]})
             
-            log(f"[Queue] 📤 Ticket an MQTT gesendet (ID: {str(job['_id'])[-6:]})")
+            log(f"[Queue] Ticket an MQTT gesendet (ID: {str(job['_id'])[-6:]})")
             printed_count += 1
             
             # Kurze Pause zwischen Tickets
             time.sleep(2) 
             
         except Exception as e:
-            log(f"❌ [Queue] Fehler beim Verarbeiten von Ticket {job.get('_id')}: {e}")
+            log(f"[Queue] Fehler beim Verarbeiten von Ticket {job.get('_id')}: {e}")
             break # Loop abbrechen, später nochmal versuchen
 
     return printed_count
@@ -235,9 +235,9 @@ def start_background_flusher():
     _running = True
     _thread = threading.Thread(target=_loop, name="mongo-queue-flusher", daemon=True)
     _thread.start()
-    log("[Queue] ♻️ MongoDB-Queue-Thread gestartet.")
+    log("[Queue] MongoDB-Queue-Thread gestartet.")
 
 def stop_background_flusher():
     global _running
     _running = False
-    log("[Queue] 🛑 Queue-Loop gestoppt.")
+    log("[Queue] Queue-Loop gestoppt.")

@@ -35,13 +35,13 @@ from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html, login
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("[main] 🧩 Starte Printer-App …")
+    print("[main] Starte Printer-App …")
     
     # 1. Alte Queue-Dateien retten!
     try:
         migrate_files_to_mongo()
     except Exception as e:
-        print(f"[main] ⚠️ Fehler bei der Migration: {e}")
+        print(f"[main] Fehler bei der Migration: {e}")
 
     # 2. Flusher starten
     try:
@@ -51,12 +51,12 @@ async def lifespan(app: FastAPI):
         pass
     
     start_background_flusher()
-    print("[main] ✅ Druck-Queue frisch gestartet.")
+    print("[main] Druck-Queue frisch gestartet.")
     
     yield
     
     stop_background_flusher()
-    print("[main] 👋 App shutdown.")
+    print("[main] App shutdown.")
 
 app = FastAPI(title="Printer API", lifespan=lifespan)
 
@@ -151,7 +151,7 @@ def ui_status():
 async def print_job(p: PrintPayload, request: Request):
     check_api_key(request)
     if (not p.title.strip()) and (not any(line.strip() for line in p.lines)):
-        log("⚠️ Leerer PrintJob – wird übersprungen.")
+        log("Leerer PrintJob – wird übersprungen.")
         return {"ok": False, "msg": "Empty print job ignored."}
 
     _print_text_content(p.title, p.lines, p.add_datetime, p.cut, "api")
@@ -161,7 +161,7 @@ async def print_job(p: PrintPayload, request: Request):
 async def api_print_template(p: PrintPayload, request: Request):
     check_api_key(request)
     if (not p.title.strip() or p.title.strip().lower() == "tasks") and not any(line.strip() for line in p.lines):
-        log("⚠️ Leeres Template oder Defaulttitel – wird nicht gedruckt.")
+        log("Leeres Template oder Defaulttitel – wird nicht gedruckt.")
         return {"ok": False, "msg": "Empty or default template ignored."}
 
     _print_text_content(p.title, p.lines, p.add_datetime, p.cut, "api")
@@ -171,7 +171,7 @@ async def api_print_template(p: PrintPayload, request: Request):
 async def api_print_raw(p: RawPayload, request: Request):
     check_api_key(request)
     if not p.text.strip():
-        log("⚠️ Leerer Raw-Text – Druck übersprungen.")
+        log("Leerer Raw-Text – Druck übersprungen.")
         return {"ok": False, "msg": "Empty raw print ignored."}
 
     lines = (p.text + (f"\n{now_str('%Y-%m-%d %H:%M')}" if p.add_datetime else "")).splitlines()
@@ -497,7 +497,7 @@ def _render_guests_admin(request: Request) -> str:
       el.select(); el.setSelectionRange(0, 99999);
       navigator.clipboard.writeText(el.value).then(()=>{
         const b=el.nextElementSibling; 
-        if(b){ b.textContent="Copied ✓"; setTimeout(()=>b.textContent="Copy",1200); }
+        if(b){ b.textContent="Copied"; setTimeout(()=>b.textContent="Copy",1200); }
       });
     }
     </script>

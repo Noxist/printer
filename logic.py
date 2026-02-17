@@ -74,30 +74,30 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
     if handle_presence_message(topic, msg.payload):
         t = topic.decode("utf-8", errors="ignore") if isinstance(topic, (bytes, bytearray)) else topic
         if t == HEARTBEAT_TOPIC and os.getenv("DEBUG_HEARTBEAT_LOG", "0").lower() in ("1","true","yes","on"):
-            log("🔔 Heartbeat received.")
+            log("Heartbeat received.")
         # Heartbeats and success pings do not carry payloads we care about here.
         if topic != INBOX_TOPIC:
             return
 
     # Nur dein INBOX-Topic verarbeiten (nicht das Drucker-Topic!)
     if topic != INBOX_TOPIC:
-        log(f"⚠️ Ignoriere fremdes Topic: {topic}")
+        log(f"Ignoriere fremdes Topic: {topic}")
         return
 
     # Payload dekodieren
     try:
         payload = json.loads(msg.payload.decode("utf-8", errors="ignore"))
     except Exception as e:
-        log(f"⚠️ MQTT decode error: {e}")
+        log(f"MQTT decode error: {e}")
         return
 
-    # 🔹 Eigene Nachrichten (vom Drucker oder Web-Handler) ignorieren
+    # Eigene Nachrichten (vom Drucker oder Web-Handler) ignorieren
     if isinstance(payload, dict) and payload.get("source") in ["printer", "colonnes_web"]:
-        log("🔁 Eigene MQTT-Nachricht erkannt – wird ignoriert.")
+        log("Eigene MQTT-Nachricht erkannt – wird ignoriert.")
         return
 
     # --------------------------------------------
-    # 🔹 Colonnes-Tickets (ohne ticket_id)
+    # Colonnes-Tickets (ohne ticket_id)
     # --------------------------------------------
     if (
         isinstance(payload, dict)
@@ -114,32 +114,32 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
                 "paper_height_mm": payload.get("paper_height_mm", 0),
             }
 
-            # 🧩 PNG aus Base64 dekodieren
+            # PNG aus Base64 dekodieren
             img = Image.open(io.BytesIO(base64.b64decode(b64)))
 
-            # 🧠 Automatisch auf Druckerbreite skalieren
+            # Automatisch auf Druckerbreite skalieren
             target_width = int(os.getenv("PRINT_WIDTH_PX", 576))
             w, h = img.size
             if w != target_width:
                 scale = target_width / w
                 new_h = int(h * scale)
                 img = img.resize((target_width, new_h), Image.LANCZOS)
-                log(f"🔍 Colonnes PNG rescaled from {w}px → {target_width}px (scale={scale:.2f})")
+                log(f"Colonnes PNG rescaled from {w}px → {target_width}px (scale={scale:.2f})")
 
-            # 🌀 Wieder zurück in Base64
+            # Wieder zurück in Base64
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
             enqueue_base64_png(b64, cut_paper=cut, meta=meta)
-            log(f"📥 Colonnes-Ticket in Queue gelegt (len={len(b64)}).")
+            log(f"Colonnes-Ticket in Queue gelegt (len={len(b64)}).")
 
         except Exception as e:
-            log(f"❌ Fehler beim Verarbeiten von Colonnes-Ticket: {e}")
+            log(f"Fehler beim Verarbeiten von Colonnes-Ticket: {e}")
         return
 
     # --------------------------------------------
-    # 🔹 Colonnes-Web-Tickets (haben ticket_id)
+    # Colonnes-Web-Tickets (haben ticket_id)
     # --------------------------------------------
     if (
         isinstance(payload, dict)
@@ -156,32 +156,32 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
                 "paper_height_mm": payload.get("paper_height_mm", 0),
             }
 
-            # 🧩 PNG aus Base64 dekodieren
+            # PNG aus Base64 dekodieren
             img = Image.open(io.BytesIO(base64.b64decode(b64)))
 
-            # 🧠 Automatisch auf Druckerbreite skalieren
+            # Automatisch auf Druckerbreite skalieren
             target_width = int(os.getenv("PRINT_WIDTH_PX", 576))
             w, h = img.size
             if w != target_width:
                 scale = target_width / w
                 new_h = int(h * scale)
                 img = img.resize((target_width, new_h), Image.LANCZOS)
-                log(f"🔍 Colonnes-Web PNG rescaled from {w}px → {target_width}px (scale={scale:.2f})")
+                log(f"Colonnes-Web PNG rescaled from {w}px → {target_width}px (scale={scale:.2f})")
 
-            # 🌀 Wieder zurück in Base64
+            # Wieder zurück in Base64
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
             enqueue_base64_png(b64, cut_paper=cut, meta=meta)
-            log(f"📥 Colonnes-Web-Ticket in Queue gelegt (len={len(b64)}).")
+            log(f"Colonnes-Web-Ticket in Queue gelegt (len={len(b64)}).")
 
         except Exception as e:
-            log(f"❌ Fehler beim Verarbeiten von Colonnes-Web-Ticket: {e}")
+            log(f"Fehler beim Verarbeiten von Colonnes-Web-Ticket: {e}")
         return
 
     # --------------------------------------------
-    # 🔹 Eigene Web-Tickets deiner App
+    # Eigene Web-Tickets deiner App
     # --------------------------------------------
     if (
         isinstance(payload, dict)
@@ -189,13 +189,13 @@ def _handle_incoming_mqtt(_client, _userdata, msg):
         and "data_base64" in payload
         and "ticket_id" in payload
     ):
-        log("📨 Eigenes Web-Ticket empfangen (ignoriert).")
+        log("Eigenes Web-Ticket empfangen (ignoriert).")
         return
 
     # --------------------------------------------
-    # 🔹 Unbekanntes Format
+    # Unbekanntes Format
     # --------------------------------------------
-    log("⚠️ Unbekanntes MQTT-Payload empfangen:", str(payload)[:200])
+    log("Unbekanntes MQTT-Payload empfangen:", str(payload)[:200])
 
 def init_mqtt():
     """
@@ -237,11 +237,11 @@ def init_mqtt():
         client.loop_start()
         attach_client(client)
         log(
-            f"✅ MQTT connected & subscribed to "
+            f"MQTT connected & subscribed to "
             f"{INBOX_TOPIC}, {HEARTBEAT_TOPIC}, {PRINT_SUCCESS_TOPIC}, {PRINT_SUCCESS_TOPIC_ALT}"
         )
     except Exception as e:
-        log(f"❌ MQTT connection failed (App läuft weiter): {e}")
+        log(f"MQTT connection failed (App läuft weiter): {e}")
 
 
 # Wichtig: erst hier aufrufen
@@ -268,40 +268,40 @@ def _get_settings_collection():
         
         # Singleton Pattern: Nur verbinden, wenn noch nicht geschehen
         if _mongo_client is None:
-            log("🔍 Verbinde mit MongoDB URI (Settings)...")
+            log("Verbinde mit MongoDB URI (Settings)...")
             _mongo_client = MongoClient(uri)
-            log("✅ Verbindung zu Mongo-DB 'printer' hergestellt.")
+            log("Verbindung zu Mongo-DB 'printer' hergestellt.")
             
         db = _mongo_client.get_database("printer")
         return db["settings"]
     except Exception as e:
-        log("❌ MongoDB settings connection error:", repr(e))
+        log("MongoDB settings connection error:", repr(e))
         return None
         
 def _load_settings() -> dict:
     try:
         coll = _get_settings_collection()
         if coll is None: 
-            # log("⚠️ Keine Collection gefunden, gebe leeres Dict zurück.") # zu laut
+            # log("Keine Collection gefunden, gebe leeres Dict zurück.") # zu laut
             return {}
-        # log("📥 Lade settings aus Mongo...") # zu laut für jeden Check
+        # log("Lade settings aus Mongo...") # zu laut für jeden Check
         doc = coll.find_one({"_id": "settings"})
         return doc["data"] if doc and "data" in doc else {}
     except Exception as e:
-        log("❌ settings laden fehlgeschlagen:", repr(e))
+        log("settings laden fehlgeschlagen:", repr(e))
         return {}
         
 def _save_settings(data: dict):
     try:
         coll = _get_settings_collection()
         if coll is None: 
-            log("⚠️ MongoDB nicht verfügbar, settings nicht gespeichert.")
+            log("MongoDB nicht verfügbar, settings nicht gespeichert.")
             return
-        log("💾 Speichere settings in Mongo:", data)
+        log("Speichere settings in Mongo:", data)
         coll.update_one({"_id": "settings"}, {"$set": {"data": data}}, upsert=True)
-        log("✅ settings erfolgreich in MongoDB gespeichert.")
+        log("settings erfolgreich in MongoDB gespeichert.")
     except Exception as e:
-        log("❌ settings speichern fehlgeschlagen:", repr(e))
+        log("settings speichern fehlgeschlagen:", repr(e))
 
 _last_reload = 0
 _reload_interval = 3  # Sekunden
@@ -310,18 +310,18 @@ def _reload_settings_if_changed():
     global SETTINGS, _last_reload
     now = time.time()
     if now - _last_reload < _reload_interval:
-        return  # 👈 zu früh, überspringen
+        return  # zu früh, überspringen
     _last_reload = now
-    # log("📥 Lade settings aus Mongo...") 
+    # log("Lade settings aus Mongo...") 
     new_data = _load_settings()
     if new_data and new_data != SETTINGS:
         SETTINGS = new_data
-        log(f"♻️ Settings neu geladen: {SETTINGS}")
+        log(f"Settings neu geladen: {SETTINGS}")
 
 SETTINGS = _load_settings()
 
 def cfg_get(name: str, default=None):
-    _reload_settings_if_changed()  # 👈 hier wird bei jedem Zugriff neu geladen
+    _reload_settings_if_changed()  # hier wird bei jedem Zugriff neu geladen
     if name in SETTINGS:
         return SETTINGS[name]
     return default
@@ -507,9 +507,9 @@ def mqtt_publish_image_base64(b64_png: str, cut_paper: int = 1,
             log(f"MQTT publish → topic={PRINTER_TOPIC} qos={PUBLISH_QOS} bytes={len(b64_png)}")
             client.publish(PRINTER_TOPIC, json.dumps(payload), qos=PUBLISH_QOS, retain=False)
         except Exception as e:
-            log(f"⚠️ MQTT Publish failed: {e}")
+            log(f"MQTT Publish failed: {e}")
     else:
-        log("⚠️ MQTT client not ready, cannot publish.")
+        log("MQTT client not ready, cannot publish.")
 
 # ----------------- Receipt Config -----------------
 
@@ -785,15 +785,15 @@ except ImportError:
 def _get_printer():
     """Stellt eine Verbindung zum ESC/POS-Drucker her (z. B. Epson TM-m30)."""
     if not Network:
-        print("[printer] ⚠️ python-escpos nicht installiert – kein Direktdruck möglich.")
+        print("[printer] python-escpos nicht installiert – kein Direktdruck möglich.")
         return None
     ip = os.getenv("PRINTER_IP", "192.168.1.132")  # deine Drucker-IP
     try:
         p = Network(ip, port=9100, timeout=5)
-        print(f"[printer] ✅ Netzwerkdrucker verbunden: {ip}")
+        print(f"[printer] Netzwerkdrucker verbunden: {ip}")
         return p
     except Exception as e:
-        print(f"[printer] ⚠️ Netzwerkdrucker nicht erreichbar ({ip}): {e}")
+        print(f"[printer] Netzwerkdrucker nicht erreichbar ({ip}): {e}")
         return None
 
 
@@ -801,7 +801,7 @@ def print_base64_png_direct(b64_png: str, cut_paper: bool = True):
     """Druckt ein gespeichertes Base64-PNG direkt über Netzwerkdrucker."""
     p = _get_printer()
     if not p:
-        print("[printer] ⚠️ Kein Drucker gefunden – Ticket bleibt in Queue.")
+        print("[printer] Kein Drucker gefunden – Ticket bleibt in Queue.")
         return False
     try:
         from PIL import Image
@@ -811,8 +811,8 @@ def print_base64_png_direct(b64_png: str, cut_paper: bool = True):
         p.image(img, high_density_vertical=True, high_density_horizontal=True)
         if cut_paper:
             p.cut()
-        print("[printer] 🖨️ Direktdruck erfolgreich abgeschlossen.")
+        print("[printer] Direktdruck erfolgreich abgeschlossen.")
         return True
     except Exception as e:
-        print(f"[printer] ❌ Direkter Druck fehlgeschlagen: {e}")
+        print(f"[printer] Direkter Druck fehlgeschlagen: {e}")
         return False
