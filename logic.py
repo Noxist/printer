@@ -1,7 +1,7 @@
 # logic.py — robust print rendering (fonts fallback, no black blocks), Swiss-safe (kein ss)
 
-import os, ssl, json, time, base64, uuid, io, hmac, hashlib, sys, random
-from datetime import datetime, timedelta
+import os, ssl, json, time, base64, uuid, io, sys, random
+from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import List, Optional
 
@@ -17,7 +17,7 @@ from status_monitor import (
 )
 
 # FastAPI helpers (falls von main.py genutzt)
-from fastapi import HTTPException, Request, Response
+from fastapi import HTTPException, Request
 
 # Gast-Token DB (wie zuvor)
 from guest_tokens import get_guest_db
@@ -34,10 +34,6 @@ MQTT_PASS = os.getenv("MQTT_PASSWORD")
 MQTT_TLS  = os.getenv("MQTT_TLS", "true").lower() in ("1","true","yes","on")
 TOPIC     = os.getenv("PRINT_TOPIC", "print/tickets")
 PUBLISH_QOS = int(os.getenv("PRINT_QOS", "2"))
-
-UI_PASS = os.getenv("UI_PASS", "set_me")
-COOKIE_NAME = "ui_token"
-UI_REMEMBER_DAYS = int(os.getenv("UI_REMEMBER_DAYS", "30"))
 
 TZ = ZoneInfo(os.getenv("TIMEZONE", "Europe/Zurich"))
 PRINT_WIDTH_PX = int(os.getenv("PRINT_WIDTH_PX", "576"))
@@ -678,45 +674,12 @@ def check_api_key(req: Request):
     if key != APP_API_KEY:
         raise HTTPException(401, "invalid api key")
 
-def sign_token(ts: str) -> str:
-    sig = hmac.new(APP_API_KEY.encode(), ts.encode(), hashlib.sha256).hexdigest()[:32]
-    return f"{ts}.{sig}"
-
-def verify_token(token: str) -> bool:
-    try:
-        ts, _sig = token.split(".")
-        if sign_token(ts) != token:
-            return False
-        created = datetime.fromtimestamp(int(ts), tz=TZ)
-        return (datetime.now(TZ) - created) < timedelta(days=UI_REMEMBER_DAYS)
-    except Exception:
-        return False
-
 def require_ui_auth(request: Request) -> bool:
     if (request.headers.get("x-api-key") or request.query_params.get("key")) == APP_API_KEY:
         return True
-    tok = request.cookies.get(COOKIE_NAME)
-    return bool(tok and verify_token(tok))
-
-def issue_cookie(resp: Response):
-    ts = str(int(time.time()))
-    token = sign_token(ts)
-    resp.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        max_age=UI_REMEMBER_DAYS * 24 * 3600,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-        path="/"
-    )
-
-def ui_auth_state(request: Request, pass_: Optional[str], remember: bool) -> tuple[bool, bool]:
-    if require_ui_auth(request):
-        return True, False
-    if pass_ is not None and pass_ == UI_PASS:
-        return True, bool(remember)
-    return False, False
+    jwt_assertion = request.headers.get("cf-access-jwt-assertion")
+    authenticated_email = request.headers.get("cf-access-authenticated-user-email")
+    return bool(jwt_assertion and authenticated_email)
 
 # ----------------- Guest Tokens -----------------
 def _guest_check_len_ok(total_chars: int) -> tuple[bool, str]:

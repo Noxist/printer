@@ -24,8 +24,8 @@ _HTML_BASE = """
     <div class="spacer"></div>
     <nav class="nav" id="main-nav">
       <a class="link" href="/ui">Printer</a>
-      <a class="link guest-hide" href="/ui/guests">Guests</a>
-      <a class="link guest-hide" href="/ui/settings">Settings</a>
+      <a class="link" href="/ui/guests">Guests</a>
+      <a class="link" href="/ui/settings">Settings</a>
       <a class="link {logout_class}" id="logout-link" href="/ui/logout">Logout</a>
     </nav>
   </div>
@@ -36,25 +36,20 @@ _HTML_BASE = """
 </html>
 """
 
-# --- Login Page ---
+# --- Access Denied Page ---
 
-HTML_LOGIN = """
+HTML_ACCESS_DENIED = """
 <div style="max-width: 400px; margin: 40px auto;">
-  <section class="card">
-    <h3 class="title" style="margin-bottom:16px; text-align:center">Login</h3>
-    <form method="post" action="/ui/login">
-      <label for="pass">Password</label>
-      <input id="pass" type="password" name="pass" placeholder="Enter UI Password" required autofocus>
-      
-      <label style="margin-top:14px; display:flex; align-items:center; gap:8px; cursor:pointer">
-        <input type="checkbox" name="remember" checked style="width:auto; margin:0"> 
-        Stay signed in
-      </label>
-      
-      <div class="form-actions" style="margin-top:20px">
-        <button type="submit" style="width:100%">Sign In</button>
-      </div>
-    </form>
+  <section class="card" style="text-align:center">
+    <h3 class="title" style="margin-bottom:16px;">Access Denied</h3>
+    <p style="color:var(--muted); margin-bottom:20px;">
+      This page is protected. You need to sign in with an authorized Google account via Cloudflare Access.
+    </p>
+    <div class="form-actions" style="justify-content:center; margin-top:20px">
+      <a href="/ui" style="text-decoration:none">
+        <button type="button">Back to Printer</button>
+      </a>
+    </div>
   </section>
 </div>
 """
@@ -138,11 +133,12 @@ def html_page(title: str, content: str, show_logout: bool = False) -> HTMLRespon
         
     return HTMLResponse(html)
 
-def login_page(error: str = None) -> HTMLResponse:
-    content = HTML_LOGIN
-    if error:
-        content = f"<div class='card' style='border-color:var(--err); color:var(--err); max-width:400px; margin:20px auto; text-align:center'>{error}</div>" + content
-    return html_page("Login", content, show_logout=False)
+def turnstile_challenge_page(site_key: str, next_url: str = "/ui/settings", error: str = None) -> HTMLResponse:
+    # Legacy — kept for compatibility, now unused
+    return access_denied_page()
+
+def access_denied_page() -> HTMLResponse:
+    return html_page("Access Denied", HTML_ACCESS_DENIED, show_logout=False)
 
 def guest_ui_html(ignored_flag: str = "") -> str:
     return HTML_UI
@@ -364,8 +360,4 @@ document.addEventListener("DOMContentLoaded",()=>{{
   setInterval(refreshStatus, 30000);
 }});
 
-// --- Guest Mode Cleanup ---
-if(location.pathname.startsWith("/guest/")){{
-  document.querySelectorAll(".guest-hide").forEach(el=>el.style.display="none");
-}}
 """.replace("{w}", str(PRINT_WIDTH_PX))

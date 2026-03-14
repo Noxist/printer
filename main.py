@@ -24,12 +24,12 @@ from queue_print import (
 from routes_sources import router as sources_router
 from logic import (
     log, now_str, pil_to_base64_png, render_receipt, render_image_with_headers,
-    ReceiptCfg, check_api_key, require_ui_auth, issue_cookie, ui_auth_state,
+    ReceiptCfg, check_api_key, require_ui_auth,
     cfg_get, SETTINGS, SET_KEYS, _save_settings, _reload_settings_if_changed,
     GUESTS, guest_consume_or_error, _guest_check_len_ok, GUEST_MAX_CHARS,
     printer_status,
 )
-from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html, login_page
+from ui_html import html_page, HTML_UI, settings_html_form, guest_ui_html, access_denied_page
 
 # --- Lifecycle & Startup ------------------------------------------------------
 
@@ -197,43 +197,24 @@ async def api_print_image(
 # --- Routes: Auth & Login -----------------------------------------------------
 
 @app.get("/ui/login", response_class=HTMLResponse)
-def ui_login_get(request: Request):
-    # If already logged in, go to dashboard
-    if require_ui_auth(request):
-        return RedirectResponse("/ui", status_code=303)
-    return login_page()
+def ui_login_get():
+    return access_denied_page()
 
 @app.post("/ui/login")
-async def ui_login_post(request: Request, pass_: str = Form(..., alias="pass"), remember: bool = Form(False)):
-    # Validate password
-    correct, should_set_cookie = ui_auth_state(request, pass_, remember)
-    if correct:
-        resp = RedirectResponse("/ui", status_code=303)
-        if should_set_cookie:
-            issue_cookie(resp)
-        return resp
-    
-    return login_page(error="Wrong password.")
+async def ui_login_post():
+    return access_denied_page()
 
 @app.get("/ui/logout")
 def ui_logout():
-    r = RedirectResponse("/ui/login", status_code=303)
-    r.delete_cookie("ui_token", path="/")
-    return r
+    return RedirectResponse("/ui", status_code=303)
 
 # --- Routes: UI (Dashboard) ---------------------------------------------------
 
 @app.get("/ui", response_class=HTMLResponse)
 def ui(request: Request):
-    # 1. Check if password is configured in settings
-    pass_configured = bool(cfg_get("UI_PASS"))
-    
-    # 2. Check if user is authenticated
     is_authed = require_ui_auth(request)
-
-    # 3. If password exists AND user is NOT authed -> Redirect to Login
-    if pass_configured and not is_authed:
-        return RedirectResponse("/ui/login", status_code=303)
+    if not is_authed:
+        return access_denied_page()
 
     # 4. Render Dashboard (No-Cache)
     headers = {
@@ -253,10 +234,7 @@ def ui(request: Request):
 # --- Routes: UI Print Actions (Protected) -------------------------------------
 
 def _ensure_authed(request: Request):
-    if cfg_get("UI_PASS") and not require_ui_auth(request):
-         # In an AJAX/Form POST, a 401 or redirect to login is appropriate
-         return False
-    return True
+    return require_ui_auth(request)
 
 @app.post("/ui/print/template")
 async def ui_print_template(
@@ -266,7 +244,7 @@ async def ui_print_template(
     add_dt: bool = Form(False),
 ):
     if not _ensure_authed(request):
-        return RedirectResponse("/ui/login", status_code=303)
+        return access_denied_page()
 
     title_s = (title or "").strip()
     body_lines = [ln.rstrip() for ln in (lines or "").splitlines()]
@@ -292,7 +270,7 @@ async def ui_print_raw(
     add_dt: bool = Form(False),
 ):
     if not _ensure_authed(request):
-        return RedirectResponse("/ui/login", status_code=303)
+        return access_denied_page()
 
     resp = RedirectResponse("/ui#raw", status_code=303)
 
@@ -315,7 +293,7 @@ async def ui_print_image(
     img_subtitle: str | None = Form(None),
 ):
     if not _ensure_authed(request):
-        return RedirectResponse("/ui/login", status_code=303)
+        return access_denied_page()
     
     try:
         content = await file.read()
@@ -412,7 +390,7 @@ async def guest_print_image(
 @app.get("/ui/settings", response_class=HTMLResponse)
 def ui_settings(request: Request):
     if not require_ui_auth(request):
-        return RedirectResponse("/ui/login", status_code=303)
+        return access_denied_page()
     
     content = "<h3 class='title'>Settings</h3>" + settings_html_form()
 
@@ -424,7 +402,7 @@ def ui_settings(request: Request):
 @app.post("/ui/settings/save", response_class=HTMLResponse)
 async def ui_settings_save(request: Request):
     if not require_ui_auth(request):
-        return RedirectResponse("/ui/login", status_code=303)
+        return access_denied_page()
 
     form = await request.form()
     for key, default, typ, _ in SET_KEYS:
@@ -447,7 +425,7 @@ async def ui_settings_save(request: Request):
 @app.get("/ui/settings/test", response_class=HTMLResponse)
 def ui_settings_test(request: Request):
     if not require_ui_auth(request):
-        return RedirectResponse("/ui/login", status_code=303)
+        return access_denied_page()
     
     sample_lines = ["Read - 10 Min", "Drink water", "Plan – 10 Min", "Exercise – 20 Min"]
     _print_text_content("TEST", sample_lines, True, True, "ui")
@@ -540,7 +518,7 @@ def _render_guests_admin(request: Request) -> str:
 @app.get("/ui/guests", response_class=HTMLResponse)
 def ui_guests(request: Request):
     if not require_ui_auth(request):
-        return RedirectResponse("/ui/login", status_code=303)
+        return access_denied_page()
     
     content = _render_guests_admin(request)
     if request.headers.get("X-Partial") == "true":
@@ -550,7 +528,7 @@ def ui_guests(request: Request):
 @app.post("/ui/guests/create", response_class=HTMLResponse)
 async def ui_guests_create(request: Request):
     if not require_ui_auth(request):
-        return RedirectResponse("/ui/login", status_code=303)
+        return access_denied_page()
     form  = await request.form()
     name  = (form.get("name") or "Gast").strip()
     quota = int((form.get("quota") or 5))
@@ -562,7 +540,7 @@ async def ui_guests_create(request: Request):
 @app.post("/ui/guests/revoke", response_class=HTMLResponse)
 async def ui_guests_revoke(request: Request):
     if not require_ui_auth(request):
-        return RedirectResponse("/ui/login", status_code=303)
+        return access_denied_page()
     form = await request.form()
     tok  = form.get("token") or ""
     ok   = GUESTS.revoke(tok)
